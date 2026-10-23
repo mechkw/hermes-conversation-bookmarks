@@ -1,0 +1,13 @@
+name: conversation-bookmarks
+version: 0.1.0
+description: "Explicit profile-local conversation references, notes and tags for Dashboard and Desktop."
+author: Ken Watts
+license: MIT
+provides_tools:
+  - conversation_bookmark_save
+  - conversation_bookmark_search
+  - conversation_bookmark_update
+  - conversation_bookmark_delete
+python_dependencies:
+  - "fastapi>=0.115,<1"
+  - "pydantic>=2.8,<3"
