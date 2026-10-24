@@ -5,6 +5,13 @@ this file is not a promise of future features.
 
 ## Unreleased
 
+- Added concise native command-menu metadata and expanded non-saving command help,
+  with real-loader/menu/help/lifecycle regression probes. Documented priority/cap
+  setup and the v0.22.5 global `/help` and `/commands` omission of plugin commands;
+  no custom menu or core-help override. See [Command discovery](docs/COMMANDS.md).
+- Propagated the selected official host through `PYTHONPATH` in verification so
+  catalog child-process probes resolve host imports in clean CI environments.
+
 - Fixed supplied tag casing loss: create/update now trim boundary whitespace and
   deduplicate case-insensitively while preserving the first spelling/case. Exact tag
   filters use Unicode casefold on both sides, so mixed-case and existing lowercase

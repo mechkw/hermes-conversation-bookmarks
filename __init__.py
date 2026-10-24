@@ -108,6 +108,18 @@ def _handoff(ctx, supplied, missing, session_id, session_key):
 
 _USAGE = ('Usage: /bookmark [title] [#tag1, tag2] [--description "text"]\n'
           'Omitted title, tags and description are completed by the current agent. /bookmark help for help.')
+_HELP = ('Usage:\n/bookmark — request a bookmark of this current conversation\n'
+         '/bookmark [title] [#tag1, tag2] [--description "text"] — supply any or all metadata\n'
+         '/bookmark help — show this syntax without saving\n'
+         'The current agent generates only missing title, tags and description, then saves, reads back '
+         'and confirms the details. Supplied metadata is preserved; description is stored as note. '
+         'Supply all three fields to save directly without a model turn.\n'
+         'Use comma-separated tags after # and a quoted --description; titles need no quotes. '
+         'An existing current native session is required; none is guessed. '
+         'Assisted gateway saves require plugins.entries.conversation-bookmarks.allow_gateway_injection: true; '
+         'queued is not saved.\n'
+         'In groups, the reference is the host-routed session, which may be shared, not a private per-user bookmark. '
+         'Use a private conversation for private context. No file attachment syntax: use Delivery Shelf for files.')
 
 
 def _metadata(raw_args):
@@ -134,7 +146,7 @@ def _metadata(raw_args):
 def _bookmark_command(raw_args, *, ctx, session_id=None, session_key=None):
     """Explicit conversation bookmark; the host alone supplies the source ID."""
     if raw_args.strip() == "help":
-        return _USAGE
+        return _HELP
     if session_id is None or session_id == "":
         return ("Bookmark not saved: the host did not supply the current native session. "
                 "Start or resume a conversation first. If this host lacks command context, "
@@ -200,5 +212,6 @@ def register(ctx):
         return _bookmark_command(raw_args, ctx=ctx, session_id=session_id, session_key=session_key)
 
     ctx.register_command("bookmark", bookmark_command,
-                         description="Bookmark this conversation; agent completes omitted title, tags and description",
-                         args_hint='[title] [#tag1, tag2] [--description "text"] | help')
+                         description="Save this chat; /bookmark help",
+                         args_hint='[title] [#tag1, tag2] [--description "text"] | help',
+                         argument_mode="text")

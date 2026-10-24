@@ -136,6 +136,13 @@ interfaces, with a shared backend and profile-local storage.
 Hermes is our choice for the best agent platform: capable enough to do the work, open
 enough to make the small everyday details better. This is one of those details.
 
+## Command discovery
+
+`/bookmark help` shows full syntax. Native Telegram menus use the plugin registry,
+but menu priority may be needed to survive the host cap. On official Hermes v0.22.5,
+global gateway `/help` and `/commands` omit plugin commands entirely; registering
+argument hints cannot fix that host gap. [Menu setup, syntax and verified limitations →](docs/COMMANDS.md)
+
 ## Go deeper
 
 - [Everyday usage, remote setup, retention, and troubleshooting](docs/OPERATIONS.md)
