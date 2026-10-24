@@ -17,8 +17,9 @@ Somewhere in that conversation is the decision you agreed on, the explanation th
 finally clicked, or the answer you will need again. A bookmark gives it a place to live
 without turning the whole chat into another document.
 
-**A name. A note. A way back.** No automatic transcript collector, no extra model calls,
-and no new account to manage.
+**A name. A note. A way back.** No automatic transcript collector or new account.
+The plugin makes no model calls of its own; when you request a save with omitted
+metadata, your current Hermes agent completes it using that conversation's context.
 
 ## Quick start
 
@@ -69,7 +70,31 @@ These are actual plugin views with fictional entries. [Verification scope →](d
 
 ## Save it, then find it
 
-Ask Hermes:
+Save the current conversation directly in Telegram or another context-aware Hermes chat:
+
+```text
+/bookmark
+/bookmark Approved plugin art direction #branding, plugins
+/bookmark Approved plugin art direction #branding, plugins --description "Chosen visual direction"
+/bookmark help
+```
+
+Omit any **title, tags, or description** and your current Hermes agent generates only
+what is missing, saves, reads it back, and briefly reports the saved/generated details.
+Supplied details are preserved. Tags keep their first spelling/case after boundary trimming
+and case-insensitive deduplication; tag filtering remains case-insensitive.
+Description is stored in the existing **note** field. Supplying all three saves directly,
+without an agent turn. Bare `/bookmark` requests a save; `/bookmark help` shows usage.
+
+Gateway/TUI handoff requires explicit per-plugin consent:
+`plugins.entries.conversation-bookmarks.allow_gateway_injection: true`.
+The plugin never enables this itself. [Consent and troubleshooting →](docs/OPERATIONS.md#current-agent-handoff-consent)
+
+The source is the actual current native session, never a guessed conversation. Titles
+need no quotes. A whitespace-delimited `#` starts comma-separated tags; `C#` stays
+literal. Use the tool/page for literal commas inside tags or reserved syntax in titles.
+
+Or ask Hermes:
 
 > “Bookmark this conversation as ‘Launch decision,’ tagged website and launch. Note that
 > we agreed on Friday with the reduced scope.”

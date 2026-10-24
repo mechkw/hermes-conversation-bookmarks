@@ -45,7 +45,7 @@ export const sdkImportMap=()=>({
  'react':blob('export default window.__QA_REACT__;export const {useState,useEffect,useRef,useId,useMemo}=window.__QA_REACT__;'),
  '@hermes/plugin-sdk':blob('export const {host,useValue,ROUTES_AREA,SIDEBAR_NAV_AREA}=window.__QA_SDK__;')
 });`;
-const contextStub=`export function createPluginContext(id,track){return {registerMany(items){for(const c of items){window.__QA_CONTRIBUTIONS__.push(c);track(()=>{window.__QA_CONTRIBUTIONS__=window.__QA_CONTRIBUTIONS__.filter(x=>x!==c);});}},onDispose:track,os:{writeClipboard:async(text)=>{window.__QA_CLIPBOARD__=text;return true;}},rest:(path,opts={})=>window.__QA_FETCH__('/api/plugins/'+id+path,{method:opts.method||'GET',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined})};}`;
+const contextStub=`export function createPluginContext(id,track){return {registerMany(items){for(const c of items){window.__QA_CONTRIBUTIONS__.push(c);}const dispose=()=>{window.__QA_CONTRIBUTIONS__=window.__QA_CONTRIBUTIONS__.filter(x=>!items.includes(x));};track(dispose);return dispose;},onDispose:track,os:{writeClipboard:async(text)=>{window.__QA_CLIPBOARD__=text;return true;}},rest:(path,opts={})=>window.__QA_FETCH__('/api/plugins/'+id+path,{method:opts.method||'GET',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined})};}`;
 const recordsStub=`import {atom} from 'nanostores';export const $pluginRecords=atom({});export function publishPlugin(r){$pluginRecords.set({...$pluginRecords.get(),[r.id]:r});}export function dropPlugin(){}export function pluginActive(id,fallback){return fallback;}`;
 const desktopEntry=common+`
 import {loadRuntimePlugin,unloadRuntimePlugin} from '${source}/apps/desktop/src/contrib/runtime-loader.ts';
@@ -87,13 +87,13 @@ try{
  browser=await chromium.launch({headless:true});
  const auth={'X-Hermes-Session-Token':'fictional-test-session','Content-Type':'application/json'};
  const api=async(path,opts={})=>{const r=await fetch(base+'/api/plugins/conversation-bookmarks'+path,{...opts,headers:auth});if(!r.ok)throw new Error(await r.text());return r.json();};
- const screenshots=process.env.BOOKMARKS_SCREENSHOT_DIR||join(root,'docs/assets');await mkdir(screenshots,{recursive:true});
+ const screenshots=process.env.BOOKMARKS_SCREENSHOT_DIR||join(scratch,'screenshots');await mkdir(screenshots,{recursive:true});
 
  for(const adapter of ['dashboard','desktop']){
   const context=await browser.newContext({viewport:{width:1440,height:1100}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/qa/'+adapter);
-  try{await expect(page.getByRole('heading',{name:'Conversation Bookmarks',exact:true})).toBeVisible();}catch(e){console.error(errors,await page.locator('body').innerText(),logs);throw e;}
+  try{await expect(page.getByRole('heading',{name:'Saved',exact:true})).toBeVisible();}catch(e){console.error(errors,await page.locator('body').innerText(),logs);throw e;}
   await expect(page.getByRole('heading',{name:'Keep your place'})).toBeVisible();
   await page.getByRole('button',{name:'＋ Save bookmark',exact:true}).focus();await page.keyboard.press('Enter');
   const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.getByLabel('Title',{exact:true})).toBeFocused();
@@ -188,7 +188,7 @@ try{
   list=await api('/entries');for(const item of list.items)await api(`/entries/${item.id}?revision=${item.revision}`,{method:'DELETE'});
   console.log(`${adapter}: native loader, CRUD/readback, search/tag/sort, escaped text, 360/768/1440, light-dark-light, keyboard/dialog, conflicts, outage/retry, delete confirmation, stale callback fences PASS`);
  }
- console.log('Fictional screenshots retained: dashboard.png, desktop.png, mobile.png. Native loader DOM testing, NOT Electron.');
+ console.log('Fictional screenshots: '+screenshots+' (temporary by default; native loader DOM tests, NOT Electron).');
 }finally{
  await browser?.close();
  if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}

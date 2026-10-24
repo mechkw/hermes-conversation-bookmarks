@@ -1,1 +1,1 @@
-{"name":"conversation-bookmarks","label":"Conversation Bookmarks","description":"Keep the useful moment, not another transcript.","version":"0.1.0","icon":"Bookmark","tab":{"path":"/conversation-bookmarks","position":"end"},"entry":"dist/index.js","api":"plugin_api.py"}
+{"name":"conversation-bookmarks","label":"Conversation Bookmarks","description":"Keep the useful moment, not another transcript.","version":"0.1.0","icon":"Bookmark","tab":{"path":"/conversation-bookmarks","position":"end","hidden":true},"entry":"dist/index.js","api":"plugin_api.py","slots":["header-banner"]}

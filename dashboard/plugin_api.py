@@ -41,12 +41,14 @@ class EntryInput(BaseModel):
     @field_validator("tags")
     @classmethod
     def tags_valid(cls, values):
-        result = []
+        result, seen = [], set()
         for value in values:
-            value = value.strip().lower()
+            value = value.strip()
             if not value or len(value) > 40 or not value.isprintable():
                 raise ValueError("Tags must contain 1–40 printable characters")
-            if value not in result:
+            key = value.casefold()
+            if key not in seen:
+                seen.add(key)
                 result.append(value)
         return result
 
@@ -142,6 +144,8 @@ class Store:
     def connect(self):
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
+        # SQLite lower/NOCASE only fold ASCII; match the Unicode validator instead.
+        conn.create_function("tag_casefold", 1, str.casefold, deterministic=True)
         try:
             with conn:
                 yield conn
@@ -165,11 +169,11 @@ class Store:
     def search(self, q="", tag="", sort="newest", limit=50, offset=0):
         params, clauses = [], []
         if q:
-            clauses.append("(instr(lower(json_extract(payload,'$.title') || ' ' || json_extract(payload,'$.note')),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(payload,'$.tags') WHERE instr(lower(value),lower(?))>0))")
+            clauses.append("(instr(lower(json_extract(payload,'$.title') || ' ' || json_extract(payload,'$.note')),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(payload,'$.tags') WHERE instr(tag_casefold(value),tag_casefold(?))>0))")
             params.extend([q,q])
         if tag:
-            clauses.append("EXISTS (SELECT 1 FROM json_each(payload,'$.tags') WHERE value=?)")
-            params.append(tag.lower())
+            clauses.append("EXISTS (SELECT 1 FROM json_each(payload,'$.tags') WHERE tag_casefold(value)=?)")
+            params.append(tag.casefold())
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         order = {"newest":"created DESC,id", "oldest":"created ASC,id", "title":"lower(json_extract(payload,'$.title')),id"}[sort]
         with self.connect() as conn:

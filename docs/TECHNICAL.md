@@ -17,7 +17,7 @@ Desktop Open conversation → host.openSession → native session navigation
 
 ## Source layout
 
-- `__init__.py`: four native tools, validated invocation context, locked lazy service import.
+- `__init__.py`: four native tools, `/bookmark`, validated invocation context, locked lazy service import.
 - `plugin.yaml`, `VERSION`: unified package identity, capabilities, runtime dependencies.
 - `dashboard/plugin_api.py`: strict models, source adapter, metadata store, API routes.
 - `dashboard/manifest.json`: Dashboard page contribution.
@@ -63,14 +63,84 @@ must belong to that exact session. Omit it for a conversation-level bookmark. Wh
 invocation's session ID. Missing context fails; explicitly invalid/empty IDs are not
 silently repaired or replaced with a guessed source.
 
-No `/bookmark` command is registered. The inspected raw-argument slash callback lacks
-reliable session context; adding a misleading shortcut would weaken the source contract.
+### Native slash command
+
+`/bookmark [title] [#tag1, tag2] [--description "text"]` registers through
+`ctx.register_command` with named `session_id` and `session_key` context. Bare invocation
+requests a save; `/bookmark help` alone returns usage. The quoted description option is
+parsed separately so unquoted title apostrophes remain literal. The first start-of-input
+or whitespace-delimited `#` outside that description separates comma-separated tags.
+Description maps to `note`; explicit `--description ""` preserves an empty note.
+
+The shared `EntryInput` model validates supplied data and the exact native source ID.
+Read-only source validation runs before either path, including bare handoff. No missing
+or foreign source, malformed ID, invalid supplied metadata, or environment fallback is
+silently repaired. Tags are boundary-trimmed and case-insensitively deduplicated, keeping the first spelling/case;
+structured API/tool tags and one-tag-per-line UI retain literal commas.
+
+When all three metadata fields are supplied, the command saves deterministically through
+the existing store; `Store.create` commits then calls `get` on the exact saved ID before
+returning. Its concise completion reports the actual stored title, tags and description.
+
+When any field is omitted, the command **does not save a placeholder**. It calls only the
+supported `ctx.inject_message(content, role="user", session_key=session_key)` API, capturing
+its registration context rather than retaining a process-global host. The prompt carries
+an ASCII-escaped JSON data object with exact parsed supplied values, explicit missing-field
+names and the native source session ID. User metadata is framed as inert data, never
+interpolated into instructions. The agent is asked to generate only missing fields from
+its current conversation, preserve supplied data, call `conversation_bookmark_save`, then
+`conversation_bookmark_search` and verify the exact returned ID and metadata before a
+brief saved/generated-details completion. No source transcript is fetched by the plugin.
+
+Host acceptance is asynchronous, not a saved result. The accepted command returns empty
+text to avoid an extra completion/preamble. Missing/denied/unavailable injection yields an
+explicit failure and no command-side save or retry. Normal model processing, host safety
+controls, routing and delivery apply. The plugin does not own credentials, a separate
+model client, or a background collector. Prompt framing is not a guarantee of arbitrary
+model adherence; tests validate the handoff and tools, not a live LLM's behavior.
+
+The [official injection contract](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins/#injecting-messages)
+and installed `hermes_cli/plugins_injection.py` establish the routing and default-off
+`plugins.entries.conversation-bookmarks.allow_gateway_injection: true` permission for
+gateway/TUI hosts. The plugin never writes that setting. The native routing key is passed
+unchanged, never synthesized from `session_id`; no new `origin` is constructed. Classic
+in-process CLI queues are host-owned. Gateway-backed classic CLI may retain the turn in
+history without displaying the reply; use the all-supplied path when needed. An accepted
+request can still fail later: search before retrying, and consult native gateway logs.
+
+The host dispatcher `hermes_cli/plugin_command_dispatch.py:invoke_plugin_command`
+passes only context parameters the handler declares. The gateway route is not inferred
+from that helper: inspected `gateway/run_inbound_hooks.py` resolves the registered
+command, looks up the existing session by the chat session key, builds session context,
+and forwards its `session_id` under the native session environment scope. A missing
+session remains empty; the command does not create or guess one.
+
+Both official v0.22.5 (`bf0203a794a07aac3ff764972ab9087baa4e4f4e`) and the development
+baseline contain this context-aware dispatcher and gateway route. The earlier claim
+that v0.22.5 slash callbacks lacked reliable context was incorrect. No minimum-version
+bump or CI pin change is required. The live official [plugin guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/)
+still includes one-argument examples; the installed native route is the evidence for
+optional named context. Older hosts invoking just `handler(raw_args)` fail helpfully,
+leaving explicit-ID tools/UI available. No environment session fallback is used.
+
+`tests/test_bookmark_command.py` exercises the confirmed public seam: native
+`invoke_plugin_command` → handler captured through `register(ctx)` → registered search
+tool readback, with native ContextVar profile binding and fictional SQLite sources.
+It also invokes the actual `GatewayInboundHooksMixin._hm_run_plugin_handler` with a
+fictional Telegram `MessageEvent` and routing index: an existing chat resolves its
+session, while a new chat with no session fails closed. Native event parsing, context
+building, and dispatch execute unchanged; the fixture owns the index, context lifetime,
+and executor (using native session variables and `asyncio.to_thread`).
+`tests/native_probe.py` separately uses the real host plugin loader and command lookup,
+then native command/tool dispatch and authenticated HTTP readback. These tests do not
+claim live Telegram delivery, Bot API menu registration, or transport testing.
 
 ### Bounds
 
 - Title: trimmed, nonempty printable text, at most 160 characters.
-- Note: at most 4,000 characters; supplied by the caller, not extracted from the source.
-- Tags: up to 20; each 1–40 printable characters; trimmed, lowercased, deduplicated.
+- Note/description: at most 4,000 characters; supplied by the caller or current agent
+  on an explicit save request, never extracted by the source adapter.
+- Tags: up to 20; each 1–40 printable characters; boundary-trimmed, case-insensitively deduplicated (Unicode casefold), retaining the first spelling/case.
 - Session ID: 1–160 characters from letters, digits, `_`, `.`, `:`, and `-`.
 - Message ID: positive native integer, at most 9,007,199,254,740,991. The UI conservatively
   limits its entry field to 15 decimal digits. Platform message IDs are not inferred.
@@ -82,6 +152,15 @@ reliable session context; adding a misleading shortcut would weaken the source c
 Search covers titles, notes, and tags, with an exact tag filter and newest/oldest/title
 sorting. It never searches transcript content. Saved records add an opaque ID, timestamps,
 a revision, and current source availability.
+
+Exact tag filtering compares Unicode casefolded values with bound SQL parameters,
+not SQLite's ASCII-only `lower`/`NOCASE`. It matches existing lowercase and new
+mixed-case records without migration; display spelling and order are unchanged by
+reads. Commas, quotes, `%` and `_` remain literal tag characters, not patterns or SQL.
+Casefold is not accent removal or Unicode normalization. Bookmark tag substring
+search also uses casefold, avoiding a Unicode search regression when tags are no
+longer stored lowercase. Title/note search semantics are unchanged.
+
 
 ## Authenticated API
 
@@ -192,7 +271,59 @@ and removal. The real Desktop reconciliation implementation copies, updates, and
 the UI package. Bookmark SQLite and the fictional native source database are checked
 byte-identical across the lifecycle. The workflow contains the isolated setup.
 
-Verified release runner:
+### Tag-casing correction verification (unreleased)
+
+After the supplied-tag casing correction, the installed-host run passed **41
+unittest tests**, `tests/native_probe.py`, and `tests/native_contract.py` (Doctor:
+4 tools, zero findings; catalog: 16 checks, zero warnings). New regressions preserve
+`OpsCase` / `Keep-Tag` through direct slash saves and handoff-to-fixture completion,
+and cover API create/update/readback, legacy lowercase filters, Unicode casefold,
+case-insensitive deduplication, literal commas, and SQL-like tag input. The same full
+unittest, native probe and contract checks also passed against an isolated archive
+of official Hermes v0.22.5 after the correction.
+
+A separate real native `AIAgent` run passed three fictional cases for this plugin:
+all metadata omitted; exact title and mixed-case tags supplied; exact description
+supplied. Each generated only missing metadata, saved once to actual plugin SQLite,
+searched the stored entry, and returned its title, tags and description. Independent
+readback confirmed supplied values and source references; source hashes stayed
+unchanged across the runs.
+
+That test used a capture callback to obtain the command handoff and a real model
+for subsequent agent/tool execution. It is not live Telegram delivery or a
+browser/Electron test. All fixture homes were removed; production remains unchanged.
+
+### Slash-command verification (unreleased)
+
+Verification passed on both the installed development host `bd3cbe91a90` and official
+v0.22.5 (`bf0203a794a07aac3ff764972ab9087baa4e4f4e`): all 38 tests under
+`python -m unittest discover -s tests -p 'test_*.py' -v`, `tests/native_probe.py`, and
+`tests/native_contract.py`. Doctor registered four tools with zero findings; catalog
+validation passed all 16 checks with zero warnings. `git diff --check` also passed.
+The official host was a temporary archive removed after testing; CI pins are unchanged.
+
+The earlier deterministic command baseline passed 32 tests. Agent-assisted metadata
+completion extends that baseline to **38 unittest tests**: 22 existing tests and 16
+public command regressions. The red/green sequence first demonstrated that bare saves
+still showed help and omitted fields were saved prematurely, then implemented native
+handoff and quoted description support. Coverage includes every omitted-field subset,
+explicit empty description, supplied overrides, limits, JSON-framed hostile metadata,
+help, missing sources/context, denied/unsupported injection, deterministic readback,
+native gateway context propagation, and profile isolation.
+
+`tests/native_probe.py` exercises the real loader, dispatcher, `PluginContext.inject_message`,
+profile-owned default-off consent, separate profile targets, registered tool dispatch,
+and authenticated HTTP readback. Its published gateway receivers and later completed
+metadata are explicitly fictional fixtures, **not model output**. Acceptance alone is
+checked to create no bookmark; native source bytes remain unchanged. These tests do
+not prove a live model obeys the prompt, platform delivery succeeds, or arbitrary
+malicious metadata cannot influence an agent.
+
+All banks and host archives are disposable under `TMPDIR`. No production enablement,
+config change, source edits, install, publishing, or frontend bundle changes are part
+of this work. Browser/Electron behavior is not re-certified by command tests.
+
+Verified release runner (0.1.0 baseline):
 
 - 22 unit tests covering ownership, strict inputs, source pruning, read-only source
   bytes, concurrent profile contexts, revision conflicts, and native tools.
@@ -213,7 +344,7 @@ by these tests. Context binding tests are separate from that transport boundary.
 
 ## Deliberate exclusions
 
-No automatic excerpts, observer hooks, model calls, analytics, cloud sync, memory writes,
+No automatic excerpts, observer hooks, independent plugin model calls, analytics, cloud sync, memory writes,
 source database edits, import/export, bulk actions, source retention changes, or invented
 message-anchor navigation. The narrow source adapter is the compatibility boundary to
 revisit if Hermes changes its session schema or adds a suitable public read-only API.

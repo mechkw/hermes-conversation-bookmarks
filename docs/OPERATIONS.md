@@ -48,8 +48,78 @@ A good title tells your future self **why you saved it**:
 - “Why the cache kept serving old images” rather than “Debugging.”
 - “Three questions for the next meeting” rather than “Useful response.”
 
-Notes are deliberately supplied text. The plugin does not copy conversation excerpts,
-generate summaries, or add facts to Hermes memory.
+The plugin does not copy conversation excerpts or add facts to Hermes memory. On an
+explicit save request, the current agent may generate missing title, tags and description
+from context it already has. Description uses the existing note field; the plugin has
+no independent model client, credentials, or transcript collector.
+
+### Save with /bookmark
+
+```text
+/bookmark
+/bookmark Approved plugin art direction #branding, plugins
+/bookmark #branding --description "Keep the approved direction"
+/bookmark Approved plugin art direction #branding, plugins --description "Keep the approved direction"
+/bookmark help
+```
+
+Bare `/bookmark` requests a save. The current native agent generates any omitted
+**title, tags and description**, preserves supplied details, saves, searches/readbacks
+the saved ID, then briefly reports the saved details and which were generated. No
+unnecessary clarification is requested. `/bookmark help` alone shows help.
+
+Supplying all three fields saves directly and reports the actual stored details after
+readback, with no agent turn. Description maps to **note**, not a new database field.
+Use `--description ""` to deliberately retain an empty note rather than generate one.
+This does not rename the native conversation and uses no message ID.
+
+Titles need no quotes. The first `#` at the start or after whitespace starts the
+comma-separated tags; `C#` and `issue#42` inside a title remain literal. Starting with
+`#tags` leaves title generation to the agent. `--description` requires a single- or
+double-quoted value and may appear before or after title/tags; quote/backslash escaping
+follows shell quoting, without shell execution or variable expansion. Duplicate or
+unclosed description options are errors. Use the tool/page when your title contains a
+whitespace-delimited `#`, reserved `--description` syntax, or a tag contains a literal comma.
+
+Titles must be nonempty printable text up to 160 characters. Supply at most 20 tags,
+each 1–40 printable characters; empty/trailing/doubled comma entries are rejected.
+Tags retain their first spelling/case after boundary trimming and case-insensitive
+deduplication. The existing UI/API/tool tag format is
+unchanged: commas inside a structured tag are still literal.
+
+The host must supply the actual current session ID. A chat without a stored session
+or an older host without command context gets an actionable error, never a guessed
+latest session or a session from an environment variable. Start/resume a conversation,
+or upgrade such an older host; the explicit-ID tool/page remains available. Missing
+or foreign-profile sources are refused. No search/update/delete subcommands are added.
+
+### Current-agent handoff consent
+
+The host must support `PluginContext.inject_message` and have a live route back to this
+session. Gateway/TUI handoff is default-off. Only if you trust this plugin and want this
+behavior, explicitly grant in the intended profile's configuration:
+
+```yaml
+plugins:
+  entries:
+    conversation-bookmarks:
+      allow_gateway_injection: true
+```
+
+This allows the host to queue an agent turn and potentially send its reply to the
+conversation's messaging platform. The plugin never changes configuration, grants
+consent, creates a fresh conversation, or substitutes another model. Missing/denied
+support returns an error with no command-side save. You can instead supply all three
+fields, use the page, or ask your current agent to save via the tools.
+
+An accepted handoff is **queued, not saved**. The command suppresses an extra success
+message; the agent's verified save/readback is the completion. If no reply arrives,
+check host routing/logs and search bookmarks before retrying (creates are not idempotent).
+Current official docs note that gateway-backed classic CLI injection may be recorded
+in session history without appearing in the attached CLI; use the direct path there
+if a visible response is required. Agent/tool availability, normal provider processing,
+usage charges, and host safety controls still apply. No live-provider or platform
+transport test is implied by the plugin's fixture tests.
 
 ### Bookmark a particular message
 
@@ -64,7 +134,8 @@ only need a conversation-level bookmark.
 ## Find, edit, and remove
 
 Search titles, notes, and tags; filter by an exact tag; sort by newest saved, oldest saved,
-or title. Search does not inspect conversation text. Tags are normalized to lowercase. In the
+or title. Search does not inspect conversation text. Tag filters are case-insensitive,
+including older lowercase entries; stored tags are not rewritten. In the
 editor, enter one tag per line; commas inside a tag remain part of that tag.
 
 Editing uses the revision you loaded. If another client saves first, refresh and review
@@ -90,9 +161,8 @@ For a known session, the CLI form is:
 hermes --profile default --resume example-session-001
 ```
 
-Replace the fictional ID and profile with the actual source. There is no `/bookmark`
-shortcut in this version: the inspected slash-command callback does not supply reliable
-session context. Native tools and the explicit-ID UI avoid guessing.
+Replace the fictional ID and profile with the actual source. `/bookmark` uses only the
+current session supplied by Hermes; use the tool/page for a different explicit source.
 
 ## When the source disappears
 

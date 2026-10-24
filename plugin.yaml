@@ -8,6 +8,8 @@ provides_tools:
   - conversation_bookmark_search
   - conversation_bookmark_update
   - conversation_bookmark_delete
+provides_commands:
+  - bookmark
 python_dependencies:
   - "fastapi>=0.115,<1"
   - "pydantic>=2.8,<3"

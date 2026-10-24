@@ -48,8 +48,48 @@ class BookmarksTests(unittest.TestCase):
         self.home=Path(self.temp.name)/'home';source(self.home);self.store=api.Store(self.home)
     def entry(self,**kw):return api.EntryInput(title='Useful decision',session_id='fictional-a',**kw)
     def create(self,**kw):return self.store.create(self.entry(**kw))
+    def test_api_preserves_tag_case_and_filters_old_and_new_spellings(self):
+        app = FastAPI()
+        app.include_router(api.router)
+        with patch.object(api, 'bound_home', return_value=self.home), TestClient(app) as client:
+            payload = {'title': 'OpsCase', 'tags': [' Keep-Tag ', 'keep-tag', 'Équipe', 'équipe',
+                       'Straße', 'STRASSE', 'Design, Decisions', "100%_' OR 1=1 --"]}
+            payload['session_id'] = 'fictional-a'
+            response = client.post('/entries', json=payload)
+            self.assertEqual(response.status_code, 201, response.text)
+            item = response.json()
+            expected = ['Keep-Tag', 'Équipe', 'Straße', 'Design, Decisions', "100%_' OR 1=1 --"]
+            self.assertEqual(item['title'], 'OpsCase')
+            self.assertEqual(item['tags'], expected)
+            path = '/entries/' + item['id']
+            self.assertEqual(client.get(path).json(), item)
+            # Lowercase rows represent the previously persisted format; do not migrate them.
+            legacy = client.post('/entries', json={**payload, 'tags': ['keep-tag', 'équipe']}).json()
+            for tag, ids in [('KEEP-TAG', {item['id'], legacy['id']}),
+                             ('ÉQUIPE', {item['id'], legacy['id']}),
+                             ('strasse', {item['id']}), ('DESIGN, decisions', {item['id']}),
+                             ("100%_' OR 1=1 --", {item['id']}),
+                             ('Design', set()), ('%', set()), ("' OR 1=1 --", set())]:
+                with self.subTest(tag=tag):
+                    response = client.get('/entries', params={'tag': tag})
+                    self.assertEqual(response.status_code, 200, response.text)
+                    result = response.json()
+                    self.assertEqual(result['total'], len(ids))
+                    self.assertEqual({entry['id'] for entry in result['items']}, ids)
+            for query in ('équipe', 'ÉQUIPE', 'strasse', 'DESIGN, decisions'):
+                result = client.get('/entries', params={'q': query}).json()
+                self.assertIn(item['id'], {entry['id'] for entry in result['items']})
+            updated = client.put(path, json={**payload, 'revision': item['revision'],
+                                            'tags': [' NEW-Tag ', 'new-tag', 'ÉQUIPE', 'équipe']})
+            self.assertEqual(updated.status_code, 200, updated.text)
+            self.assertEqual(updated.json()['tags'], ['NEW-Tag', 'ÉQUIPE'])
+            self.assertEqual(client.get(path).json(), updated.json())
+            self.assertEqual(client.get('/entries', params={'tag': 'new-TAG'}).json()['items'],
+                             [updated.json()])
+            self.assertEqual(client.get('/entries/' + legacy['id']).json(), legacy)
+
     def test_crud_and_revision(self):
-        e=self.create(note='A deliberate note',tags=['Design','design']);self.assertEqual(e['tags'],['design'])
+        e=self.create(note='A deliberate note',tags=['Design','design']);self.assertEqual(e['tags'],['Design'])
         u=api.EntryUpdate(**{**self.entry().model_dump(),'title':'Updated','revision':1})
         updated=self.store.update(e['id'],u);self.assertEqual(updated['revision'],2)
         with self.assertRaises(HTTPException) as cm:self.store.update(e['id'],u)
@@ -194,11 +234,17 @@ class BookmarksTests(unittest.TestCase):
             self.assertFalse(run('search',{'limit':True})['ok'])
             u=run('update',{'id':e['id'],**self.entry().model_dump(),'revision':1});self.assertTrue(u['ok'])
             self.assertTrue(run('delete',{'id':e['id'],'revision':2})['ok'])
-    def test_registration_and_no_slash_or_hooks(self):
+    def test_registration_tools_command_and_no_hooks(self):
         class Ctx:
-            def __init__(self):self.tools=[]
+            def __init__(self):self.tools=[];self.commands=[]
             def register_tool(self,**kw):self.tools.append(kw)
+            def register_command(self,name,handler,**kw):self.commands.append((name,handler,kw))
         ctx=Ctx();plugin.register(ctx);self.assertEqual(len(ctx.tools),4)
+        self.assertEqual([x[0] for x in ctx.commands],['bookmark'])
+        self.assertIn('--description', ctx.commands[0][2]['args_hint'])
+        save = next(tool for tool in ctx.tools if tool['name'] == 'conversation_bookmark_save')
+        self.assertIn('explicit save request only', save['schema']['description'])
+        self.assertIn('Description maps to note', save['schema']['description'])
         self.assertEqual({x['name'] for x in ctx.tools},{'conversation_bookmark_'+x for x in ('save','search','update','delete')})
     def test_cold_import_thread_safe(self):
         cold=load('bookmarks_cold',ROOT/'__init__.py')

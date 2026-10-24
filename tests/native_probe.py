@@ -10,7 +10,7 @@ SOURCE = Path(os.environ.get('HERMES_SOURCE', Path.home()/'.hermes/hermes-agent'
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def prepare(home):
+def prepare(home, profile='default'):
     home.mkdir(parents=True, exist_ok=True)
     package=home/'plugins/conversation-bookmarks'
     package.mkdir(parents=True)
@@ -24,7 +24,7 @@ def prepare(home):
     with closing(sqlite3.connect(home/'state.db')) as db:
         db.execute('CREATE TABLE sessions(id TEXT PRIMARY KEY,profile_name TEXT)')
         db.execute('CREATE TABLE messages(id INTEGER PRIMARY KEY, session_id TEXT)')
-        db.execute("INSERT INTO sessions VALUES ('fictional-session-01', 'default')")
+        db.execute("INSERT INTO sessions VALUES ('fictional-session-01', ?)", (profile,))
         db.execute("INSERT INTO messages VALUES (1, 'fictional-session-01')")
         db.commit()
     return package
@@ -72,7 +72,7 @@ def probe():
             # Exercise the installed ContextVar API, not a mocked home resolver.
             from hermes_constants import set_hermes_home_override, reset_hermes_home_override
             other=Path(directory)/'profiles'/'other'
-            prepare(other)
+            prepare(other, 'other')
             # Test native ContextVar home binding without asking the outer
             # host to launch an out-of-process secondary-profile service.
             import importlib.util
@@ -94,6 +94,103 @@ def probe():
                 reset_hermes_home_override(token)
             assert module.bound_home()==home
             assert client.get(prefix+'/entries',headers=headers).json()['total']==1
+            # Real loader registration, native command dispatcher, native tool
+            # dispatch and HTTP readback all share the fictional bound profile.
+            from hermes_cli.plugins import get_plugin_command_handler
+            from hermes_cli.plugin_command_dispatch import invoke_plugin_command
+            from tools.registry import registry
+            handler=get_plugin_command_handler('bookmark')
+            assert handler is not None
+            reply=invoke_plugin_command(handler, 'Approved plugin art direction #branding, plugins --description "Chosen direction"',
+                                        session_id='fictional-session-01', platform='telegram')
+            assert 'Saved bookmark' in reply,reply
+            search_result=registry.dispatch('conversation_bookmark_search', {'tag':'plugins'},scope=str(home))
+            assert isinstance(search_result,str)
+            found=json.loads(search_result)
+            assert found['ok'] and found['data']['total']==1,found
+            saved=found['data']['items'][0]
+            assert saved['title']=='Approved plugin art direction'
+            assert saved['tags']==['branding','plugins']
+            assert saved['session_id']=='fictional-session-01'
+            assert saved['note']=='Chosen direction'
+            assert client.get(prefix+'/entries/'+saved['id'],headers=headers).json()==saved
+            print('NATIVE COMMAND: real loader /bookmark → native dispatcher → search tool → HTTP readback passed.')
+            # Real PluginContext.inject_message and native permission/router boundary.
+            # The published gateway receiver is a fixture: no model or platform transport.
+            from hermes_cli.plugins import get_plugin_manager
+            manager = get_plugin_manager()
+            owner, queued = object(), []
+            def receive(**request):
+                queued.append(request)
+                return True
+            manager.set_gateway_message_injector(owner, receive)
+            before_source = (home/'state.db').read_bytes()
+            try:
+                reply = invoke_plugin_command(handler, '', session_id='fictional-session-01',
+                                              session_key='telegram:fictional-chat', platform='telegram')
+                assert 'Bookmark not saved' in reply and 'allow_gateway_injection' in reply, reply
+                assert queued == []
+                (home/'config.yaml').write_text('plugins:\n  enabled: [conversation-bookmarks]\n  isolation: in_process\n  entries:\n    conversation-bookmarks:\n      allow_gateway_injection: true\n')
+                reply = invoke_plugin_command(handler, 'Approved plugin art direction #branding, plugins',
+                                              session_id='fictional-session-01',
+                                              session_key='telegram:fictional-chat', platform='telegram')
+                assert reply == '' and len(queued) == 1, (reply, queued)
+                request = queued[0]
+                assert request['session_key'] == 'telegram:fictional-chat'
+                assert request['plugin_home'] == home
+                assert request['plugin_id'] == 'conversation-bookmarks'
+                payload = json.loads(request['content'].split('\nREQUEST_DATA_JSON\n', 1)[1])
+                assert payload == {'session_id': 'fictional-session-01',
+                                   'supplied': {'title': 'Approved plugin art direction',
+                                                'tags': ['branding', 'plugins']},
+                                   'missing': ['description']}, payload
+                assert client.get(prefix+'/entries',headers=headers).json()['total']==2
+                assert (home/'state.db').read_bytes() == before_source
+                # Merely acknowledging a queued request did not perform a save.
+                # Simulate the later agent's public tool calls with explicit fictional
+                # metadata, NOT fabricated model output; verify through native HTTP.
+                completion = registry.dispatch('conversation_bookmark_save', {
+                    'title': 'Fictional generated title', 'tags': ['fictional'],
+                    'note': 'Fictional agent completion fixture',
+                    'session_id': 'fictional-session-01'}, scope=str(home))
+                assert isinstance(completion, str)
+                completed = json.loads(completion)
+                assert completed['ok'], completed
+                search_result = registry.dispatch('conversation_bookmark_search',
+                                                  {'tag': 'fictional'}, scope=str(home))
+                assert isinstance(search_result, str)
+                found = json.loads(search_result)
+                assert found['ok'] and found['data']['items'] == [completed['data']], found
+                assert client.get(prefix+'/entries/'+completed['data']['id'],headers=headers).json()==completed['data']
+                assert (home/'state.db').read_bytes() == before_source
+                # Consent and target home are profile-owned, not borrowed from default.
+                token = set_hermes_home_override(other)
+                other_manager = get_plugin_manager()
+                other_queued = []
+                def receive_other(**request):
+                    other_queued.append(request)
+                    return True
+                other_manager.set_gateway_message_injector(owner, receive_other)
+                try:
+                    other_handler = get_plugin_command_handler('bookmark')
+                    assert other_handler is not None
+                    reply = invoke_plugin_command(other_handler, '', session_id='fictional-session-01',
+                                                  session_key='telegram:fictional-other', platform='telegram')
+                    assert 'Bookmark not saved' in reply and 'allow_gateway_injection' in reply, reply
+                    assert other_queued == [] and len(queued) == 1
+                    (other/'config.yaml').write_text('plugins:\n  enabled: [conversation-bookmarks]\n  isolation: in_process\n  entries:\n    conversation-bookmarks:\n      allow_gateway_injection: true\n')
+                    reply = invoke_plugin_command(other_handler, '', session_id='fictional-session-01',
+                                                  session_key='telegram:fictional-other', platform='telegram')
+                    assert reply == '' and len(other_queued) == 1
+                    assert other_queued[0]['plugin_home'] == other
+                    assert other_queued[0]['session_key'] == 'telegram:fictional-other'
+                    assert module.request_store('other').search()['total'] == 0
+                finally:
+                    other_manager.clear_gateway_message_injector(owner)
+                    reset_hermes_home_override(token)
+            finally:
+                manager.clear_gateway_message_injector(owner)
+            print('NATIVE HANDOFF: consent denied/allowed; exact route and JSON data; no premature save; tool/HTTP completion fixture readback passed (no LLM/transport).')
             # Live effective policy gate must close an already-mounted router.
             (home/'config.yaml').write_text('plugins:\n  enabled: []\n  disabled: [conversation-bookmarks]\n  isolation: in_process\n')
             r=client.get(prefix+'/status',headers=headers)
