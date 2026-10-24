@@ -4,7 +4,8 @@
 
 Please do not put secrets, private conversation excerpts, file contents, or exploitable
 proofs into a public issue. Use [GitHub private vulnerability reporting](https://github.com/mechkw/hermes-conversation-bookmarks/security/advisories/new)
-when enabled, or email **ken@virtuedev.com** with the subject “Conversation Bookmarks security”.
+as the preferred channel. If you cannot use GitHub private reporting, email
+**repobugs@virtuedev.com** with the subject “Conversation Bookmarks security”.
 Include the affected commit or release, Hermes version, operating system, reproduction
 steps using fictional data, and expected versus observed behavior.
 
