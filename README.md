@@ -11,7 +11,7 @@
   <a href="docs/TECHNICAL.md">Technical guide</a>
 </p>
 
-![Original editorial artwork inspired by keeping a place in a conversation](docs/assets/hero.webp)
+![Conversation Bookmarks — classical dialogue marked for return, with oversized cream-and-gold lettering and digital halftone texture](docs/assets/hero.webp)
 
 Somewhere in that conversation is the decision you agreed on, the explanation that
 finally clicked, or the answer you will need again. A bookmark gives it a place to live
