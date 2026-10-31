@@ -23,14 +23,37 @@ metadata, your current Hermes agent completes it using that conversation's conte
 
 ## Quick start
 
+### Native Hermes Desktop
+
+In the installed app, open **Capabilities → Plugins → Install from Git** and enter:
+
+```text
+https://github.com/mechkw/hermes-conversation-bookmarks
+```
+
+Select the intended backend/profile, review the normal installation consent, and
+verify that **both Agent and Desktop are enabled**. Open **Saved → Bookmarks**.
+The Desktop UI lives on the app computer; the Agent half and data live on the
+selected backend. A server-only install followed by Rescan is not enough for a
+remote client. [Existing backend or “unavailable (remote backend)”? →](docs/OPERATIONS.md#remote-desktop-setups)
+
+### Web Dashboard or backend-only installation
+
+Run on the backend that owns your data:
+
 ```sh
 hermes plugins install mechkw/hermes-conversation-bookmarks --enable
 hermes plugins list
 ```
 
-- **Dashboard:** restart its server if it was already running, refresh, and open **Conversation Bookmarks**.
-- **Desktop:** rescan in **Capabilities → Plugins**, verify both plugin halves are enabled, and open **Conversation Bookmarks**.
-- **Mobile:** open your existing authenticated web Dashboard. The same collection adapts to a phone-sized screen.
+Refresh the authenticated **Dashboard** after its plugin routes are loaded; if
+needed, restart only that Dashboard server. Open **Saved → Bookmarks**. The
+Dashboard also adapts to phones and tablets; no separate mobile app is required.
+
+**Browser-hosted Desktop is a different host from the web Dashboard.** The
+currently inspected Hermes browser bridge does not load these external Desktop
+plugins. Use native Desktop or the Dashboard for the Saved panel; backend tools
+can still work without that panel.
 
 If your Desktop app connects to a different computer, install the backend there and
 the Desktop half on the app computer. [Remote setup explained →](docs/OPERATIONS.md)
@@ -100,8 +123,10 @@ Or ask Hermes:
 > we agreed on Friday with the reduced scope.”
 
 The save tool uses the session ID supplied by its actual invocation, or asks for an
-explicit reference when that context is missing. You can also save through the plugin
-page. Add an exact native message ID when you want to identify a particular moment.
+explicit reference when that context is missing. In **Saved → Bookmarks**, choose
+**Save bookmark**, pick a recent **Conversation** by title and date, then optionally
+choose a **Response** from its recent assistant replies. Search the response previews
+to find the answer you meant, or leave **Entire conversation** selected. No IDs to copy.
 
 Search titles, notes, and tags; filter by tag; sort by newest, oldest, or title. Edit the
 annotations without rewriting the conversation. Revision checks prevent silent overwrites.
@@ -121,7 +146,10 @@ Bookmarks are a reading and organization tool. Saving a bookmark does not teach 
 a fact, inject it into future prompts, or start a background summarization job.
 
 The plugin keeps its own metadata. Native conversations remain owned by Hermes.
-Removing a bookmark does not delete a conversation, message, or memory.
+The conversation/response chooser reads recent session details and short assistant-reply
+previews on demand from the current profile. Those previews are not stored in your
+bookmark or automatically added to its note. Removing a bookmark does not delete a
+conversation, message, or memory.
 
 A bookmark is also **not a transcript backup**. If a source conversation is deleted or
 pruned, a reference cannot make that conversation reappear. [Read the source and retention

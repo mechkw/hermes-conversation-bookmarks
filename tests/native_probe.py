@@ -22,10 +22,11 @@ def prepare(home, profile='default'):
     import sqlite3
     from contextlib import closing
     with closing(sqlite3.connect(home/'state.db')) as db:
-        db.execute('CREATE TABLE sessions(id TEXT PRIMARY KEY,profile_name TEXT)')
-        db.execute('CREATE TABLE messages(id INTEGER PRIMARY KEY, session_id TEXT)')
-        db.execute("INSERT INTO sessions VALUES ('fictional-session-01', ?)", (profile,))
-        db.execute("INSERT INTO messages VALUES (1, 'fictional-session-01')")
+        db.execute('CREATE TABLE sessions(id TEXT PRIMARY KEY,profile_name TEXT,title TEXT,source TEXT,started_at REAL,ended_at REAL,last_activity_at REAL,hidden INTEGER DEFAULT 0)')
+        db.execute('CREATE TABLE messages(id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,content TEXT,timestamp REAL,display_kind TEXT,observed INTEGER DEFAULT 0,_compressed_summary INTEGER DEFAULT 0)')
+        db.execute('CREATE INDEX idx_messages_session ON messages(session_id,timestamp)')
+        db.execute("INSERT INTO sessions(id,profile_name,title,source,started_at) VALUES ('fictional-session-01',?,'Fictional source','cli',100)", (profile,))
+        db.execute("INSERT INTO messages(id,session_id,role,content,timestamp) VALUES(1,'fictional-session-01','assistant','Fictional response preview',200)")
         db.commit()
     return package
 
@@ -63,6 +64,21 @@ def probe():
             r=client.get(prefix+'/status',headers=headers)
             assert r.status_code==200,(r.status_code,r.text)
             assert r.json()['profile']=='default'
+            chooser_paths = ('/sources/sessions', '/sources/sessions/fictional-session-01/responses')
+            before_chooser_source = (home/'state.db').read_bytes()
+            for path in chooser_paths:
+                assert client.get(prefix+path).status_code == 401
+                response = client.get(prefix+path, headers=headers)
+                assert response.status_code == 200, (response.status_code, response.text)
+                assert response.headers['cache-control'] == 'no-store'
+                assert response.json()['has_more'] is False
+                assert len(response.json()['items']) == 1
+            assert client.get(prefix+chooser_paths[0],headers=headers).json()['items'] == [
+                {'id':'fictional-session-01','title':'Fictional source','updated_at':200.0,'source':'cli'}]
+            assert client.get(prefix+chooser_paths[1],headers=headers).json()['items'] == [
+                {'id':1,'preview':'Fictional response preview','created_at':200.0}]
+            assert (home/'state.db').read_bytes() == before_chooser_source
+            print('NATIVE CHOOSERS: both routes deny unauthenticated requests; profile-bound bounded previews, no-store and source-byte integrity passed.')
             r=client.post(prefix+'/entries',headers=headers,json={'title':'Native mount proof','session_id':'fictional-session-01'})
             assert r.status_code==201,(r.status_code,r.text)
             entry=r.json()
@@ -84,6 +100,8 @@ def probe():
             token=set_hermes_home_override(other)
             try:
                 assert module.request_store('other').search()['total']==0
+                assert module.request_source('other').sessions()['items'][0]['id'] == 'fictional-session-01'
+                assert module.request_source('other').responses('fictional-session-01')['items'][0]['id'] == 1
                 try:
                     module.request_store('default')
                     raise AssertionError('mismatching hint accepted')
@@ -195,6 +213,8 @@ def probe():
             (home/'config.yaml').write_text('plugins:\n  enabled: []\n  disabled: [conversation-bookmarks]\n  isolation: in_process\n')
             r=client.get(prefix+'/status',headers=headers)
             assert r.status_code==404,(r.status_code,r.text)
+            for path in chooser_paths:
+                assert client.get(prefix+path, headers=headers).status_code == 404
         print('NATIVE API: 401 unauthenticated; authenticated discovery/CRUD/readback 200/201; Python source denied; bundle served; disabled router 404.')
 
 

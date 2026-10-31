@@ -20,6 +20,32 @@ and exact readback. In a group, the host-routed session may be shared; this is n
 a private per-participant store or an owner-pinned Shelf Add workflow. Use a private
 conversation for private context. See [Operations](OPERATIONS.md#current-agent-handoff-consent).
 
+## Conversation and response selection
+
+The page can request recent conversation choices and, after selecting a conversation,
+bounded assistant-response previews through the authenticated host API. These are
+not new slash commands and do not change `/bookmark`'s current-conversation behavior.
+
+- `GET /api/plugins/conversation-bookmarks/sources/sessions?limit=30&offset=0&q=`
+  lists local conversation IDs, native titles (or source/ID fallback labels), source,
+  and epoch-second activity timestamps.
+- `GET /api/plugins/conversation-bookmarks/sources/sessions/{session_id}/responses?limit=30&offset=0&q=`
+  lists native message IDs and visible assistant previews, at most 350 characters each.
+
+Both return `items`, `has_more`, and `window: {limit, truncated}`. Search covers only
+the recent 1,000 session choices or 500 eligible assistant rows in the selected session;
+response search matches previews, not a full transcript. Page size is 1–100 (default 30),
+query length is at most 200, and offsets stop at the corresponding window size.
+The page must label that bounded scope; an empty search is not proof that older sources
+do not exist. Missing or unsafe native stores fail explicitly rather than appearing empty.
+
+Previews are read only on explicit chooser requests, are not stored in bookmarks, and
+never include prompt/system/tool rows or dedicated reasoning payloads. Unsupported or
+oversized rich content may be omitted. Choosing a source does not itself save a bookmark.
+Manual exact references and editing metadata for old/pruned sources remain supported;
+legacy message references are not restricted retroactively to chooser-visible responses.
+See [Technical guide](TECHNICAL.md#read-only-source-boundary) for exact privacy and bounds.
+
 ## Menu and `/help`: verified host behavior, not a custom menu
 
 The plugin declares `provides_commands: [bookmark]` and uses public

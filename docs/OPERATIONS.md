@@ -14,18 +14,39 @@ The repository name is `hermes-conversation-bookmarks`; the installed plugin ID 
 claimed catalog listing. Normal Hermes dependency and capability consent still applies.
 
 - **Dashboard:** restart an already-running server after installation, refresh the page,
-  and open Conversation Bookmarks.
-- **Desktop:** rescan in **Capabilities → Plugins**, verify both Agent and Desktop halves
-  are enabled, then open Conversation Bookmarks.
+  and open **Saved → Bookmarks**.
+- **Desktop:** use the native Git installer described below, verify both Agent and
+  Desktop halves are enabled, then open **Saved → Bookmarks**.
 - **Mobile:** use your authenticated web Dashboard. There is no separate mobile app.
 
 ### Remote Desktop setups
 
-When Desktop connects to another computer, that backend owns your conversations and
-bookmark database. Install the backend package there, and install the same package on
-the computer running Desktop so its UI contribution is available. Rescan Desktop and
-connect to the intended backend/profile. A server-side installation does not automatically
-place a UI on your laptop.
+1. In the **native Desktop app**, connect to the intended backend and profile.
+2. Open **Capabilities → Plugins → Install from Git** and enter
+   `https://github.com/mechkw/hermes-conversation-bookmarks`. The native installer installs the
+   Desktop UI locally and the Agent half on the selected backend, subject to normal
+   consent. No JavaScript compilation is required.
+3. Verify both **Desktop** and **Agent** switches are enabled, then open
+   **Saved → Bookmarks** and check the displayed profile.
+
+If the backend was installed first, **“unavailable (remote backend)”** means the
+paired local Desktop half is missing. Rescan alone cannot copy files from the
+remote server. Use the native Git installer above; do not copy a bare `plugin.js`,
+which lacks the installer's package-pairing metadata.
+
+Some Hermes builds report **“already installed”** for the Agent half while still
+installing the local Desktop half. Inspect both switches afterward: the Desktop
+half may need to be enabled explicitly. Do not force-reinstall or uninstall a
+working backend just to clear this message. If the local half remains absent,
+retain the installer error for diagnosis rather than treating the install as done.
+
+### Browser-hosted Desktop versus Dashboard
+
+The currently inspected browser-hosted Desktop bridge lacks external Desktop
+plugin loading and installation. It is not the separately supported web Dashboard.
+Use native Desktop or the authenticated Dashboard for this plugin's Saved panel;
+installing the backend alone does not add that panel to browser-hosted Desktop.
+No additional public port or unauthenticated endpoint is needed.
 
 Keep Hermes's normal authentication. The plugin does not need its own public server,
 new account, or additional inbound port.
@@ -39,8 +60,16 @@ During a conversation, ask:
 
 The save tool can use the session ID actually provided by its native invocation. If
 that context is unavailable, it requires an explicit session ID rather than guessing.
-You can also save through the plugin page using the source session ID, a title, and
-optional note/tags.
+You can also use **Saved → Bookmarks → Save bookmark**:
+
+1. Choose a recent **Conversation** by its title and date.
+2. Leave **Response** set to **Entire conversation**, or choose a recent assistant
+   reply. Search the reply previews to narrow the choices; user prompts and tool
+   messages are not offered.
+3. Give it a title, optionally add a note and tags, and save.
+
+The selected native IDs stay behind the controls. Changing the conversation clears
+any response selection so an answer from another conversation cannot carry over.
 
 A good title tells your future self **why you saved it**:
 
@@ -48,10 +77,11 @@ A good title tells your future self **why you saved it**:
 - “Why the cache kept serving old images” rather than “Debugging.”
 - “Three questions for the next meeting” rather than “Useful response.”
 
-The plugin does not copy conversation excerpts or add facts to Hermes memory. On an
-explicit save request, the current agent may generate missing title, tags and description
-from context it already has. Description uses the existing note field; the plugin has
-no independent model client, credentials, or transcript collector.
+The chooser reads bounded recent session details and assistant-response previews only
+when requested. It does not store those previews in bookmark metadata or add facts to
+Hermes memory. On an explicit save request, the current agent may generate missing
+title, tags and description from context it already has. Description uses the existing
+note field; the plugin has no independent model client or background transcript collector.
 
 ### Save with /bookmark
 
@@ -121,15 +151,20 @@ if a visible response is required. Agent/tool availability, normal provider proc
 usage charges, and host safety controls still apply. No live-provider or platform
 transport test is implied by the plugin's fixture tests.
 
-### Bookmark a particular message
+### Bookmark a particular response
 
-Provide the exact **native Hermes integer message ID** along with its session ID. The
-plugin verifies that the message belongs to that session in the bound profile. A
-Telegram or Discord message ID is not interchangeable with a Hermes message ID.
+In the page editor, choose a conversation, then select an assistant reply from
+**Response**. The options show short previews and dates rather than numeric IDs.
+The plugin verifies that the underlying message belongs to that conversation in the
+bound profile. Existing bookmarks retain their source reference even when the source
+has been pruned or is outside the recent choices.
 
-Message references identify a source moment, but **Open conversation opens the session**;
-it does not promise an exact-message jump or scroll position. Omit the message ID if you
-only need a conversation-level bookmark.
+The structured API/tools still accept exact **native Hermes integer message IDs**;
+Telegram and Discord message IDs are not interchangeable with them.
+
+Response references identify a source moment, but **Open conversation opens the session**;
+it does not promise an exact-message jump or scroll position. Choose **Entire conversation**
+if you only need a conversation-level bookmark.
 
 ## Find, edit, and remove
 

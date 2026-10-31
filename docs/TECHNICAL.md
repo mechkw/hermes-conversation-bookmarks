@@ -4,13 +4,16 @@
 
 Conversation Bookmarks stores deliberate annotations and source references. It does not
 store transcripts, provide another memory backend, or intercept ordinary conversation.
+Explicit chooser requests may read recent session metadata and bounded, user-visible
+assistant-response previews. These previews are transient response data, not scraped,
+automatically collected, or copied into bookmark storage.
 
 ```text
 Native save/search/update/delete tools ────────────┐
 Dashboard → host fetchJSON → authenticated routes ├→ bound profile
 Desktop   → host ctx.rest  → authenticated routes ┘       │
                                                         ├→ bookmarks.sqlite3 (metadata)
-                                                        └→ state.db (read-only existence checks)
+                                                        └→ state.db (read-only checks / requested previews)
 
 Desktop Open conversation → host.openSession → native session navigation
 ```
@@ -90,7 +93,8 @@ names and the native source session ID. User metadata is framed as inert data, n
 interpolated into instructions. The agent is asked to generate only missing fields from
 its current conversation, preserve supplied data, call `conversation_bookmark_save`, then
 `conversation_bookmark_search` and verify the exact returned ID and metadata before a
-brief saved/generated-details completion. No source transcript is fetched by the plugin.
+brief saved/generated-details completion. This command path does not fetch source
+transcripts; the separate explicit UI chooser endpoints provide bounded previews.
 
 Host acceptance is asynchronous, not a saved result. The accepted command returns empty
 text to avoid an extra completion/preamble. Missing/denied/unavailable injection yields an
@@ -149,9 +153,11 @@ claim live Telegram delivery, Bot API menu registration, or transport testing.
 - Unknown JSON keys are rejected. POST/PUT bodies are bounded to 32 KiB while streaming,
   before model parsing. Tool arguments are validated independently of their schemas.
 
-Search covers titles, notes, and tags, with an exact tag filter and newest/oldest/title
-sorting. It never searches transcript content. Saved records add an opaque ID, timestamps,
-a revision, and current source availability.
+Bookmark search covers titles, notes, and tags, with an exact tag filter and
+newest/oldest/title sorting. It never searches transcript content. The separate source
+chooser searches recent session labels or visible response previews only, within the
+windows documented below. Saved records add an opaque ID, timestamps, a revision, and
+current source availability.
 
 Exact tag filtering compares Unicode casefolded values with bound SQL parameters,
 not SQLite's ASCII-only `lower`/`NOCASE`. It matches existing lowercase and new
@@ -170,13 +176,15 @@ trusted package admission, and effective enablement belong to the Hermes host.
 | Method | Relative path | Result |
 |---|---|---|
 | GET | `/status` | Version and bound profile |
+| GET | `/sources/sessions` | Recent conversation choices; `q`, `limit`, `offset` |
+| GET | `/sources/sessions/{session_id}/responses` | Visible assistant-response choices for one bound-profile conversation |
 | GET | `/entries` | Search/filter/sort/page using `q`, `tag`, `sort`, `limit`, `offset` |
 | POST | `/entries` | Validated entry; 201 |
 | GET | `/entries/{id}` | Metadata and current `source_status`; 404 if absent |
 | PUT | `/entries/{id}` | Full metadata and current revision; stale writes return 409 |
 | DELETE | `/entries/{id}?revision=N` | Metadata deletion; `source_deleted: false`; stale deletion returns 409 |
 
-List results contain `items`, `total`, `limit`, and `offset`. Successful responses use
+Bookmark list results contain `items`, `total`, `limit`, and `offset`. Successful responses use
 `Cache-Control: no-store`. The optional `profile` argument must match the profile already
 bound by the host; it cannot select a filesystem path or grant access to another home.
 
@@ -190,26 +198,80 @@ not duplicate creates. Source checks are point-in-time, not retention locks.
 `PRAGMA query_only=ON`. It does not construct a native SessionDB object that might
 initialize, migrate, or repair state.
 
-Only these source fields are consulted:
+Ordinary bookmark validation and availability checks consult identifiers only:
 
 ```sql
 SELECT profile_name FROM sessions WHERE id = ?;
 SELECT 1 FROM messages WHERE id = ? AND session_id = ?;
 ```
 
-No content, reasoning, prompts, session titles, tool payloads, or transcript excerpts
-are selected. Missing stores are not created. Symlinked stores/ancestors and hard-linked
-stores are refused. Read/schema failures fail closed. No immutable SQLite mode is used,
-so the adapter does not intentionally ignore a live write-ahead log.
+Explicit source chooser reads are a separate boundary:
+
+- `GET /sources/sessions?limit=30&offset=0&q=` returns
+  `{items: [{id, title, updated_at, source}], has_more, window: {limit, truncated}}`.
+  Session IDs remain strings. Titles come from native `sessions.title`, not prompts.
+  Blank/null titles fall back to `source · session-id` or `Conversation · session-id`.
+- `GET /sources/sessions/{session_id}/responses?limit=30&offset=0&q=` returns
+  `{items: [{id, preview, created_at}], has_more, window: {limit, truncated}}`.
+  IDs are positive JavaScript-safe native message integers, not platform message IDs.
+- Timestamps are finite epoch seconds or `null`; newest-first order has descending
+  IDs as deterministic tie-breakers and null timestamps last. Session recency uses the
+  newest valid start/end/activity/message timestamp, with an indexed per-session message
+  maximum rather than scanning transcript bodies. Pages reflect the live source and can
+  shift when messages arrive or are pruned; there is no retained cross-request snapshot.
+- `limit` defaults to 30 and accepts 1–100. `q` is at most 200 characters. Session
+  offsets accept 0–1,000; response offsets accept 0–500. Invalid bounds/IDs return 422.
+  Search is literal Unicode-casefolded substring matching over session ID/title/source
+  or the returned preview only, never hidden fields or text beyond the preview.
+- Search/paging is limited to the newest **1,000 local non-hidden sessions** or the
+  newest **500 eligible assistant rows** in one session (plus one row to detect a
+  truncated window). Eligible rows must have empty/null `display_kind`, no observation
+  flag, no compressed-summary flag, and a safe positive message ID. Rows with no safe
+  visible text are omitted after this window is selected. `has_more` describes matching
+  items remaining **inside** this window; `window.truncated` describes older candidates
+  outside it. Frontends should label these recent-window searches, not imply global
+  transcript search. No total transcript count is exposed.
+- Only assistant `content` is selected for preview decoding, never prompt/system/tool
+  rows or dedicated reasoning/tool-argument/API-content columns. Native structured
+  content uses the actual `\x00json:` marker. Only known `text`/`output_text` blocks
+  and assistant message wrappers are projected; reasoning/thought/analysis-channel,
+  tool and media blocks are ignored. Unknown/malformed formats fail closed. Tagged
+  private carriers in plain content are conservatively removed, as are data URIs.
+- Each stored content cell is limited to **16 KiB of bytes before Python decoding**;
+  oversized cells (including media-rich cells), binary cells and excessively nested
+  structures yield no preview. NUL-prefixed content uses a BLOB byte-length check, not
+  SQLite's NUL-terminating text length. Visible previews are whitespace-normalized and
+  capped at **350 characters**, including an ellipsis when truncated. This deliberately
+  omits some large or unsupported responses rather than exposing arbitrary payloads.
+- Responses for a missing, hidden or explicitly foreign-profile session uniformly
+  return 404. Missing/unsafe stores, unsupported schemas and exhausted query budgets
+  return a generic 503, not a misleading empty list or a filesystem/schema disclosure.
+  Chooser reads do not initialize even the plugin's metadata database.
+
+Missing stores are not created. Symlinked stores/ancestors and hard-linked stores are
+refused. Choosers additionally reject linked/non-regular WAL, SHM and journal sidecars,
+reject views in place of native tables, use `trusted_schema=OFF`, and impose a query
+progress budget (about two million SQLite VM instructions or one second, checked every
+1,000 instructions) plus a one-second lock timeout. They use a short read transaction
+for ownership and content selection. No immutable SQLite mode is used: committed live
+WAL rows stay visible. Main DB and WAL content integrity are tested; SQLite may use its
+normal shared-memory read locks. This is not protection against concurrent filesystem
+replacement by another process with the same account's access.
 
 The required native schema includes `sessions.id`, `sessions.profile_name`, `messages.id`,
-and `messages.session_id`. A null/empty legacy profile label is accepted only inside the
+and `messages.session_id` for legacy validation. Choosers also require the native title,
+source, start/end/activity/hidden fields for session listing and role/content/timestamp/
+display-kind/observed/compressed-summary fields for response listing. Missing required
+columns fail closed; the plugin never migrates native state. A null/empty legacy
+profile label is accepted only inside the
 already-bound profile's database. An explicitly foreign label is refused. Missing
 `profile_name` is not treated as permission to ignore ownership.
 
 Source statuses are `available`, `session_missing`, `message_missing`, `store_missing`,
 and `unavailable`. Deleted sources leave bookmark metadata intact. Editing annotations
 for a missing source is allowed; changing its reference requires validation again.
+Chooser filtering does not tighten legacy bookmark validation: existing explicit
+non-assistant message references still work, and old/pruned references stay editable.
 Native pruning can occur immediately after validation, so a bookmark never promises
 source resurrection or transcript retention.
 
@@ -258,6 +320,22 @@ are outside the repository and removed on exit; public-safe screenshots are reta
 Native server lifespan workers/bootstrap are disabled in HTTP fixtures.
 
 ## Compatibility and verification
+
+### Source chooser backend verification (unreleased)
+
+The fictional HTTP chooser suite covers the two specified route contracts, limits,
+stable pagination, literal search, null titles/timestamps, profile isolation, hidden
+and mixed-role rows, native rich content, malformed/oversized payloads, linked stores
+and sidecars, missing schemas, source-byte integrity, live WAL visibility, and legacy
+reference/pruned-source editing. A 300,000-message fixture verifies that session
+recency remains usable within the query budget without scanning all message rows.
+`tests/native_probe.py` additionally exercises both routes through the actual host
+loader/authentication gate, verifies unauthenticated 401, authenticated preview
+readback, native profile binding, and disabled-plugin 404. These are disposable banks,
+not production transcript reads. Browser/Electron chooser interaction and deployed
+client acceptance are separate gates; no UI bundle or rollout is part of this backend work.
+
+### Earlier release baselines
 
 The initial complete runner and native installation lifecycle passed against **Hermes
 v0.22.5**, official commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`, as well as the
