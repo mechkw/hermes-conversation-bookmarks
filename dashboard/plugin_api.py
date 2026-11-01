@@ -410,12 +410,87 @@ def generation_user_text(content, kind, summary):
     return visible or None
 
 
+def generation_legacy_indices(conn, rows, anchor_id):
+    """Read-only subset of native legacy display order: first physical identity.
+
+    NULL is a lazy index, not corruption. Recover ordinary human rows using the
+    exact native content/timestamp key; keep indexed logical slots authoritative.
+    Unsupported legacy carriers are context barriers, never guessed identities.
+    Future unindexed bodies are not read, even to hash/dedupe them.
+    """
+    anchor = next(row for row in rows if row['id'] == anchor_id)
+    budget = 4 * 1024 * 1024
+
+    def recover(row):
+        nonlocal budget
+        if row['role'] not in ('user', 'assistant') or row['_compressed_summary'] or row['display_kind']:
+            return None
+        # Only legacy ordinary rows have this exact native dedupe key. Summary
+        # normalization and stable tool-call identities need their native index.
+        record = conn.execute('''SELECT timestamp,tool_call_id,tool_calls,tool_name,
+            CASE WHEN typeof(content)='text' AND length(CAST(content AS BLOB))<=?
+                 THEN content END AS content FROM messages WHERE session_id=? AND id=?''',
+            (min(GENERATION_MESSAGE_BYTES, budget), row['session_id'], row['id'])).fetchone()
+        content = record['content']
+        if content is None:
+            return None
+        budget -= len(content.encode('utf-8'))
+        if (record['tool_calls']
+                or (row['role'] == 'user' and (content.startswith('\x00json:')
+                    or content.lstrip().startswith(('[CONTEXT', '[PRIOR CONTEXT', '[OUT-OF-BAND'))))):
+            return None
+        key = (row['role'], content, record['timestamp'], record['tool_call_id'],
+               record['tool_calls'], record['tool_name'])
+        return hashlib.sha256(repr(key).encode('utf-8', 'surrogatepass')).digest()
+
+    def slot(row):
+        return row['segment'], row['id'] if row['display_order'] is None else row['display_order']
+
+    for row in rows:
+        if row['display_order'] is not None and type(row['display_order']) is not int:
+            raise HTTPException(422, 'Conversation timeline is unsupported')
+        identity = row['display_identity']
+        if identity is not None and (not isinstance(identity, bytes) or len(identity) != 32):
+            raise HTTPException(422, 'Conversation timeline is unsupported')
+    if anchor['display_identity'] is None:
+        anchor['display_identity'] = recover(anchor)
+        if anchor['display_identity'] is None:
+            raise HTTPException(422, 'Selected legacy response needs a supported native timeline')
+    cutoff = min(slot(row) for row in rows if row['display_identity'] == anchor['display_identity'])
+    for row in sorted(rows, key=slot):
+        if row['display_identity'] is None:
+            identity = recover(row) if slot(row) <= cutoff else None
+            if identity is None and row['role'] in ('user', 'assistant') and (
+                    (not row['active'] and not row['compacted'])
+                    or (row['role'] == 'assistant' and slot(row) <= cutoff)):
+                # An unidentified tombstone might remove the selected message;
+                # an earlier unidentified assistant might be its original copy.
+                # Neither can authorize a later cutoff or resurrection. Do not
+                # read a future tombstone body to resolve this uncertainty.
+                raise HTTPException(422, 'Conversation legacy identity is ambiguous; nothing was sent')
+            row['_legacy_unreadable'] = identity is None
+            # A namespaced key cannot collide with native digest identities.
+            row['display_identity'] = identity or ('legacy-unreadable', row['id'])
+            if identity == anchor['display_identity']:
+                cutoff = min(cutoff, slot(row))
+    # Missing slots use the first physical occurrence, as native legacy display
+    # does. Recovered copies inherit any earlier indexed slot in this segment.
+    first = {}
+    for row in rows:
+        key = row['segment'], row['display_identity']
+        first[key] = min(first.get(key, slot(row)[1]), slot(row)[1])
+    for row in rows:
+        if row['display_order'] is None:
+            row['display_order'] = first[row['segment'], row['display_identity']]
+    return 4 * 1024 * 1024 - budget
+
+
 def collect_generation(source, request, previous):
-    """Indexed native timeline snapshot. Never hydrate a future body or write state.
+    """Native timeline snapshot. Never hydrate a future body or write state.
 
     An exchange is one real user request and all its following visible assistant
     messages before the next real user request. The focal exchange contains ONLY
-    its user request and the selected response. Old unsupported indices fail closed.
+    its user request and the selected response. Unprovable legacy rows fence context.
     """
     with source.chooser_connection() as conn:
         source.chooser_schema(conn, {
@@ -424,19 +499,30 @@ def collect_generation(source, request, previous):
                          'display_identity', 'display_metadata', 'display_kind', 'observed', '_compressed_summary',
                          'message_uid', 'absorbed_message_uids'),
         })
-        # Check ancestry without ever reading ancestor bodies; automated children
-        # must not become eligible simply by inheriting a human-facing source.
+        # Native resume follows compression edges, not the entire historical
+        # parent chain across resets/forks. Validate every consulted row without
+        # bodies, including provenance on compression continuations.
         sid, seen, ancestry = request.session_id, set(), {}
+        history_incomplete = False
+        boundary_parent = False
         while sid:
             if not isinstance(sid, str) or not re.fullmatch(SESSION_ID_PATTERN, sid) or len(sid) > 160:
                 raise HTTPException(422, 'Conversation ancestry is unsupported')
-            if sid in seen or len(seen) >= 32:
+            if sid in seen:
                 raise HTTPException(422, 'Conversation ancestry is unsupported')
+            if len(seen) >= 100:  # native _resume_lineage_ids bound
+                history_incomplete = True
+                break
             seen.add(sid)
             session = conn.execute('''SELECT id,profile_name,hidden,source,parent_session_id,end_reason,
                 CASE WHEN model_config IS NULL THEN '{}' WHEN typeof(model_config)='text'
                     AND length(CAST(model_config AS BLOB))<=65536 THEN model_config ELSE 'INVALID' END AS model_config
                 FROM sessions WHERE id=?''', (sid,)).fetchone()
+            if session is None and ancestry:
+                # Pruning does not guarantee retained parents. The verified
+                # local segment remains usable; never guess missing history.
+                history_incomplete = not boundary_parent
+                break
             if (session is None or session['profile_name'] not in (None, '', profile_name(source.home))
                     or session['hidden'] not in (None, 0) or session['source'] not in _HUMAN_SOURCES):
                 raise HTTPException(404, 'Conversation is not available for generation in this profile')
@@ -461,6 +547,14 @@ def collect_generation(source, request, previous):
             except (ValueError, TypeError, RecursionError):
                 raise HTTPException(422, 'Conversation provenance is unsupported; nothing was sent') from None
             ancestry[sid] = (session, config)
+            if session['parent_session_id'] in seen:
+                raise HTTPException(422, 'Conversation ancestry is unsupported')
+            if boundary_parent or (sid != request.session_id and session['end_reason'] != 'compression'):
+                break
+            # A fork may contain copied rows: check its immediate parent's known
+            # provenance, but not the unrelated history beyond that boundary.
+            boundary_parent = any(config.get(key) == session['parent_session_id']
+                                  for key in ('_branched_from', '_reset_from') if key in config)
             sid = session['parent_session_id']
         # Resume expands only verified compression edges, not arbitrary parents.
         # Inherited branch/reset markers bind to their original parent, not each
@@ -469,16 +563,15 @@ def collect_generation(source, request, previous):
         while True:
             child, config = ancestry[lineage[-1]]
             parent = child['parent_session_id']
-            if (not parent or ancestry[parent][0]['end_reason'] != 'compression'
+            if (parent not in ancestry or ancestry[parent][0]['end_reason'] != 'compression'
                     or any(config.get(key) == parent for key in ('_branched_from', '_reset_from'))):
                 break
             lineage.append(parent)
         lineage.reverse()
         anchor = conn.execute('SELECT display_order,substr(display_identity,1,33) AS display_identity,role,active,compacted FROM messages WHERE session_id=? AND id=?',
                               (request.session_id, request.message_id)).fetchone()
-        if (anchor is None or anchor['role'] != 'assistant' or not (anchor['active'] == 1 or anchor['compacted'] == 1)
-                or type(anchor['display_order']) is not int or not anchor['display_identity']):
-            raise HTTPException(422, 'Select an available indexed assistant response')
+        if anchor is None or anchor['role'] != 'assistant' or not (anchor['active'] == 1 or anchor['compacted'] == 1):
+            raise HTTPException(422, 'Select an available assistant response')
         rows = []
         for segment, sid in enumerate(lineage):
             # Metadata only; NEVER read future bodies. Later physical rows can
@@ -494,14 +587,11 @@ def collect_generation(source, request, previous):
             rows.extend(dict(row, segment=segment) for row in batch)
             if len(rows) > GENERATION_ROW_LIMIT:
                 raise HTTPException(422, 'Conversation exceeds the bounded timeline scan; choose a shorter conversation')
+        legacy_hydrated = generation_legacy_indices(conn, rows, request.message_id)
         representatives, positions, slots, identities, first_uid, removed = {}, {}, {}, {}, {}, {}
         row_keys, originals = {}, {}
         for row in sorted(rows, key=lambda row: row['id']):
             order, identity, uid = row['display_order'], row['display_identity'], row['message_uid']
-            # Native identities are exact binary SHA-256 digests. There is no
-            # known native TEXT-identity contract to support safely.
-            if not isinstance(identity, bytes) or len(identity) != 32:
-                raise HTTPException(422, 'Conversation timeline is unsupported')
             if uid is not None and (not isinstance(uid, str) or not uid or len(uid) > 256):
                 raise HTTPException(422, 'Conversation message identity is unsupported')
             try:
@@ -549,7 +639,7 @@ def collect_generation(source, request, previous):
                    if positions[key] <= cutoff and not any(removed[copy] for copy in row['copies'])]
         if not ordered or ordered[0]['id'] != request.message_id:
             raise HTTPException(422, 'Selected response has been removed')
-        hydrated = 0
+        hydrated = legacy_hydrated
         def text(row):
             nonlocal hydrated
             if row['role'] not in ('user', 'assistant') or row['observed']:
@@ -571,11 +661,13 @@ def collect_generation(source, request, previous):
                 return ''
             if metadata.get('channel') not in (None, 'final', 'commentary'):
                 return None
+            if row.get('_legacy_unreadable'):
+                return None
             if hydrated >= 4 * 1024 * 1024:
                 return None
             content = conn.execute('''SELECT CASE WHEN typeof(content)='text' AND length(CAST(content AS BLOB))<=?
                 THEN content ELSE NULL END FROM messages WHERE id=? AND session_id=?''',
-                (GENERATION_MESSAGE_BYTES, row['id'], row['session_id'])).fetchone()[0]
+                (min(GENERATION_MESSAGE_BYTES, 4 * 1024 * 1024 - hydrated), row['id'], row['session_id'])).fetchone()[0]
             if content is None:
                 return None  # oversized/invalid: do not silently drop a required row
             hydrated += len(content.encode('utf-8'))
@@ -630,6 +722,7 @@ def collect_generation(source, request, previous):
                     break
         if not found_user:
             raise HTTPException(422, 'No preceding real user request is available; nothing was sent')
+        truncated = truncated or (history_incomplete and count < previous)
         messages.reverse()
         payload = json.dumps({'messages': messages}, ensure_ascii=False)
         if len(payload.encode('utf-8')) > GENERATION_PAYLOAD_BYTES:

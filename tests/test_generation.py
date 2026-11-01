@@ -93,7 +93,7 @@ class GenerationTests(unittest.TestCase):
             with database(self.home/'state.db') as db:
                 db.execute(f'UPDATE sessions SET {column}=? WHERE id=?', (old,'fictional-a'))
         with database(self.home/'state.db') as db:
-            db.execute('UPDATE messages SET display_order=NULL WHERE id=203')
+            db.execute("UPDATE messages SET display_order='corrupt' WHERE id=203")
         self.assertEqual(self.generate().status_code, 422)
         self.assertEqual(self.calls, [])
         # Manual entire-conversation save is independent of generation eligibility.

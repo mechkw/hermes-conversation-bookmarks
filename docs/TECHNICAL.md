@@ -183,14 +183,41 @@ All three routes use the native authenticated, profile-bound plugin transport.
 ### Context boundary
 
 The collector opens native `state.db` read-only through the same guarded source
-adapter. It validates session/profile/hidden status, human-facing source and up to
-32 ancestry links, plus an exact eligible assistant anchor. Native indexed
-`display_order` / `display_identity` supplies chronology and compaction-copy
-deduplication; timestamps and physical insertion IDs do not define the cutoff.
-Missing or ambiguous timeline indices fail closed, with no native initialization,
-migration or repair. Only active/compacted logical rows at or before the anchor
-are considered; no future message body is hydrated. Copies prefer the active row,
-except that the focal response always preserves the exact selected row.
+adapter. It validates session/profile/hidden status, human-facing source, provenance
+and an exact eligible assistant anchor. Ancestry follows the native resume boundary:
+only compression continuations, stopping at explicit branch/reset edges (including
+inherited markers bound to their original parent), a non-compression parent, or the
+native 100-session bound. Historical parents beyond a reset are not this conversation.
+Consulted foreign, hidden, automated/delegate, malformed or cyclic ancestry still
+fails closed. A pruned/missing parent or exhausted ancestry bound does not fabricate
+history: the verified local segment remains usable only if it contains a readable
+focal user request. A requested earlier-context shortfall is `truncated: true`.
+
+Native indexed `display_order` / binary `display_identity` supplies logical chronology
+and copy deduplication; timestamps are not a sorting key. Native display indices are
+lazy and may be NULL even when the child has been opened. The read-only fallback
+recovers ordinary text user/assistant identities from the native exact
+role/content/timestamp/tool-field key and first physical occurrence, retaining valid
+indexed slots. A later physical copy of the selected answer cannot move the cutoff.
+Missing slots with known identities use the same first-occurrence rule. This does
+not initialize, materialize, migrate or repair the native store.
+
+Unindexed summary/steer/rich-user and tool-calling carriers are not guessed: an
+unsupported required user refuses generation; an earlier unsupported user ends
+context with a truncation disclosure. An unidentified earlier assistant or removal
+tombstone refuses generation because it could invalidate the anchor boundary.
+Malformed non-NULL identities/orders and conflicting logical slots still fail closed.
+Future unindexed bodies are not read even for identity hashing. Only active/compacted
+logical rows at or before the anchor contribute text. Copies prefer the active row,
+except that the focal response preserves the exact selected row. Legacy identity
+reads share the bounded hydration budget with visible-text projection.
+
+These semantics were checked against native `hermes_state_messages.py`
+(`_resume_lineage_ids`, `_reconcile_display_orders`, `_legacy_display_page`) and
+`hermes_state_compression.py` (`_is_compression_child_row`) at `7b46bc10064d`, with
+resident schema version 32. Regression fixtures use native temporary stores with
+mixed NULL indices, long reset histories, pruning, carried copies and future
+removal markers—not only freshly materialized histories.
 
 An earlier exchange is one real user request and its following visible assistant
 messages before the next real user request. The focal exchange includes only its

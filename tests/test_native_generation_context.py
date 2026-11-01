@@ -70,6 +70,160 @@ class NativeGenerationContextTests(unittest.TestCase):
     def messages(self):
         return json.loads(self.calls[-1]['input'][0]['text'])['messages']
 
+    def test_long_reset_history_does_not_require_unrelated_ancestry(self):
+        # Live Telegram shape: 36 raw ancestors, but only four compression
+        # segments in this conversation. Prior resets are not resume context.
+        parent = 'root'
+        for i in range(35):
+            sid = f'continued-{i}'
+            self.db.end_session(parent, 'compression' if i >= 32 else 'session_reset')
+            self.db.create_session(sid, 'telegram', parent_session_id=parent,
+                model_config={'_reset_from': parent} if i == 31 else {})
+            parent = sid
+        self.append('user', 'Current human request', parent)
+        anchor = self.append('assistant', 'Current human answer', parent)
+        response = self.generate(anchor, parent)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.messages(), [{'role':'user','content':'Current human request'},
+                                          {'role':'assistant','content':'Current human answer'}])
+
+    def test_mixed_legacy_parent_index_is_read_only_and_keeps_latest_request(self):
+        # Live Desktop shape: indexed tip, one unindexed ordinary user in its
+        # compression parent. Opening the tip does not backfill that parent.
+        self.append('user', 'Original request', timestamp=10)
+        self.append('assistant', 'Original answer', timestamp=11)
+        unindexed = self.append('user', 'Latest human request', timestamp=12)
+        self.append('assistant', 'Earlier progress', timestamp=13)
+        first = self.db.get_messages_as_conversation('root')[0]
+        self.db.publish_compression_child(parent_session_id='root', child_session_id='tip', source='desktop',
+            messages=[first], require_compression_lease=False)
+        anchor = self.append('assistant', 'Selected answer', 'tip', timestamp=14)
+        self.materialize('root', 'tip')
+        with database(self.home/'state.db') as conn:
+            conn.execute('UPDATE messages SET display_identity=NULL,display_order=NULL WHERE id=?', (unindexed,))
+        with patch.object(self, 'materialize'):
+            response = self.generate(anchor, 'tip')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.messages(), [
+            {'role':'user','content':'Original request'}, {'role':'assistant','content':'Original answer'},
+            {'role':'user','content':'Latest human request'}, {'role':'assistant','content':'Selected answer'}])
+        self.assertFalse(response.json()['context']['truncated'])
+
+    def test_pruned_parent_uses_only_proven_local_history_and_reports_shortfall(self):
+        with database(self.home/'state.db') as conn:
+            conn.execute("UPDATE sessions SET parent_session_id='pruned-parent' WHERE id='root'")
+        self.append('user', 'Retained human request')
+        anchor = self.append('assistant', 'Retained answer')
+        response = self.generate(anchor)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['context'],
+                         {'previous_exchanges':0, 'requested_exchanges':20, 'truncated':True})
+        self.assertEqual(self.messages(), [{'role':'user','content':'Retained human request'},
+                                          {'role':'assistant','content':'Retained answer'}])
+        self.client.put('/generation/settings', json={'previous_exchanges':0})
+        self.assertFalse(self.generate(anchor).json()['context']['truncated'])
+        # A missing parent cannot justify inventing a missing focal request.
+        self.db.create_session('orphan-answer', 'desktop')
+        with database(self.home/'state.db') as conn:
+            conn.execute("UPDATE sessions SET parent_session_id='pruned-parent' WHERE id='orphan-answer'")
+        orphan = self.append('assistant', 'No retained human request', 'orphan-answer')
+        self.assertEqual(self.generate(orphan, 'orphan-answer').status_code, 422)
+
+    def test_unindexed_legacy_order_dedupes_without_hydrating_future_bodies(self):
+        from contextlib import contextmanager
+        self.append('user', 'First request', timestamp=100)
+        self.append('assistant', 'First answer', timestamp=99)
+        self.append('user', 'Selected request', timestamp=98)
+        anchor = self.append('assistant', 'Selected answer', timestamp=97)
+        future_user = self.append('user', 'FUTURE request', timestamp=1)
+        future_answer = self.append('assistant', 'FUTURE answer', timestamp=2)
+        with database(self.home/'state.db') as conn:
+            # A carried earlier answer can have a later physical id. The native
+            # legacy first-identity rule, not timestamps, defines its cutoff.
+            conn.execute('''INSERT INTO messages(session_id,role,content,timestamp,active)
+                SELECT session_id,role,content,timestamp,active FROM messages WHERE id=?''', (anchor,))
+            carried = conn.execute('SELECT max(id) FROM messages').fetchone()[0]
+            conn.execute('UPDATE messages SET display_identity=NULL,display_order=NULL')
+        queries = []
+        original = api.SourceAdapter.chooser_connection
+        @contextmanager
+        def trace(source):
+            with original(source) as conn:
+                conn.set_trace_callback(queries.append)
+                yield conn
+        with patch.object(self, 'materialize'), patch.object(api.SourceAdapter, 'chooser_connection', trace):
+            response = self.generate(carried)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([m['content'] for m in self.messages()],
+                         ['First request', 'First answer', 'Selected request', 'Selected answer'])
+        # Query trace contains fictional SQL only. Verify no SELECT returning a
+        # body touched either future row, even in the legacy identity pass.
+        body_reads = [q for q in queries if ' AS content FROM messages' in q or 'THEN content ELSE NULL END FROM messages' in q]
+        self.assertTrue(body_reads)
+        for mid in (future_user, future_answer):
+            self.assertFalse(any(f'id={mid}' in q or f'id = {mid}' in q for q in body_reads), body_reads)
+
+    def test_unsupported_legacy_carrier_is_a_barrier_not_an_older_request(self):
+        self.append('user', [{'type':'text','text':'Older rich request'}])
+        self.append('assistant', 'Older answer')
+        self.append('user', 'Focal request')
+        anchor = self.append('assistant', 'Focal answer')
+        self.materialize()
+        with database(self.home/'state.db') as conn:
+            conn.execute("UPDATE messages SET display_identity=NULL,display_order=NULL WHERE role='user' AND id=(SELECT min(id) FROM messages)")
+        with patch.object(self, 'materialize'):
+            response = self.generate(anchor)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['context']['truncated'])
+        self.assertEqual(self.messages(), [{'role':'user','content':'Focal request'},
+                                          {'role':'assistant','content':'Focal answer'}])
+        # The exact same unsupported legacy row is fatal when it is focal.
+        with patch.object(self, 'materialize'):
+            response = self.generate(anchor-2)
+        self.assertEqual(response.status_code, 422)
+
+    def test_missing_slot_uses_native_identity_but_malformed_identity_still_rejects(self):
+        user = self.append('user', 'Human request')
+        anchor = self.append('assistant', 'Human answer')
+        self.materialize()
+        with database(self.home/'state.db') as conn:
+            conn.execute('UPDATE messages SET display_order=NULL WHERE id=?', (user,))
+        with patch.object(self, 'materialize'):
+            response = self.generate(anchor)
+        self.assertEqual(response.status_code, 200, response.text)
+        for value in ('not-a-native-digest', b'bad'):
+            with database(self.home/'state.db') as conn:
+                conn.execute('UPDATE messages SET display_identity=? WHERE id=?', (value, user))
+            with patch.object(self, 'materialize'):
+                self.assertEqual(self.generate(anchor).status_code, 422)
+
+    def test_unindexed_future_tombstone_cannot_resurrect_selected_answer(self):
+        self.append('user', 'Human request')
+        anchor = self.append('assistant', 'Human answer')
+        self.materialize()
+        with database(self.home/'state.db') as conn:
+            conn.execute('''INSERT INTO messages(session_id,role,content,timestamp,active,compacted)
+                SELECT session_id,role,content,timestamp,0,0 FROM messages WHERE id=?''', (anchor,))
+        with patch.object(self, 'materialize'):
+            response = self.generate(anchor)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.calls, [])
+
+    def test_explicit_boundary_still_checks_known_parent_provenance(self):
+        for i, (column, value) in enumerate((('profile_name','foreign'), ('hidden',1),
+                                            ('model_config','{"_delegate_from":"worker"}'))):
+            parent = f'boundary-parent-{i}'
+            child = f'boundary-child-{i}'
+            self.db.create_session(parent, 'desktop')
+            self.db.create_session(child, 'desktop', parent_session_id=parent,
+                                   model_config={'_branched_from':parent})
+            with database(self.home/'state.db') as conn:
+                conn.execute(f'UPDATE sessions SET {column}=? WHERE id=?', (value,parent))
+            self.append('user', 'Copied request', child)
+            anchor = self.append('assistant', 'Copied answer', child)
+            self.assertIn(self.generate(anchor, child).status_code, (404,422))
+        self.assertEqual(self.calls, [])
+
     def test_native_memory_parts_are_not_human_context(self):
         from agent.turn_context import compose_multimodal_context_part, append_notes_to_multimodal_content
         anchor = None
