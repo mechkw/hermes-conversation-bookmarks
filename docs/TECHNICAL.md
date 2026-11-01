@@ -6,7 +6,9 @@ Conversation Bookmarks stores deliberate annotations and source references. It d
 store transcripts, provide another memory backend, or intercept ordinary conversation.
 Explicit chooser requests may read recent session metadata and bounded, user-visible
 assistant-response previews. These previews are transient response data, not scraped,
-automatically collected, or copied into bookmark storage.
+automatically collected, or copied into bookmark storage. Explicit Generate details
+requests additionally use bounded visible context for stateless inference; only
+reviewed AI annotations are persisted when the user saves.
 
 ```text
 Native save/search/update/delete tools ────────────┐
@@ -143,7 +145,7 @@ claim live Telegram delivery, Bot API menu registration, or transport testing.
 
 - Title: trimmed, nonempty printable text, at most 160 characters.
 - Note/description: at most 4,000 characters; supplied by the caller or current agent
-  on an explicit save request, never extracted by the source adapter.
+  on an explicit save request, or reviewed from an explicit Generate details draft.
 - Tags: up to 20; each 1–40 printable characters; boundary-trimmed, case-insensitively deduplicated (Unicode casefold), retaining the first spelling/case.
 - Session ID: 1–160 characters from letters, digits, `_`, `.`, `:`, and `-`.
 - Message ID: positive native integer, at most 9,007,199,254,740,991. The UI conservatively
@@ -168,6 +170,80 @@ search also uses casefold, avoiding a Unicode search regression when tags are no
 longer stored lowercase. Title/note search semantics are unchanged.
 
 
+## Manual AI draft
+
+Generation is separate from `/bookmark`'s live-agent save handoff. An explicit
+**Generate details** click invokes `POST /generation/draft` with only `session_id`
+and `message_id`. It returns `{draft: {title, note, tags}, context:
+{previous_exchanges, requested_exchanges, truncated}}`, never a saved entry.
+`GET`/`PUT /generation/settings` reads/writes `{previous_exchanges: 20}` in the
+plugin metadata database; values must be strict integers from 0 through 100.
+All three routes use the native authenticated, profile-bound plugin transport.
+
+### Context boundary
+
+The collector opens native `state.db` read-only through the same guarded source
+adapter. It validates session/profile/hidden status, human-facing source and up to
+32 ancestry links, plus an exact eligible assistant anchor. Native indexed
+`display_order` / `display_identity` supplies chronology and compaction-copy
+deduplication; timestamps and physical insertion IDs do not define the cutoff.
+Missing or ambiguous timeline indices fail closed, with no native initialization,
+migration or repair. Only active/compacted logical rows at or before the anchor
+are considered; no future message body is hydrated. Copies prefer the active row,
+except that the focal response always preserves the exact selected row.
+
+An earlier exchange is one real user request and its following visible assistant
+messages before the next real user request. The focal exchange includes only its
+preceding real user request and the selected assistant response. Native human
+steers and user text carried by summaries are projected without the surrounding
+machine context. Recognizable memory/plugin injections, automated diagnostics,
+hidden, observed, model-only, system/tool, reasoning and media carriers are excluded.
+Only allowlisted visible text blocks/wrappers and scrubbed plain text survive;
+unknown rich formats and malformed context fences fail closed. Text is
+whitespace-normalized. Native history does not label arbitrary unframed plugin-only
+text parts: those are indistinguishable from additional human paragraphs. The
+adapter cannot infer provenance that the host did not preserve; its exclusion
+covers recognized native carriers, not arbitrary unmarked third-party injections.
+
+Bounds: 4,000 candidate timeline rows; 64 KiB per stored message cell; 4 MiB total
+hydration budget; 256 KiB serialized input. The focal response and user request are
+never silently shortened: missing/oversized required text refuses the request.
+Earlier context may end at a complete-exchange boundary with `truncated: true`;
+the UI shows that disclosure and actual exchange count. Query budgets and safe
+file/schema checks remain those of the source adapter below. Native state is not
+modified, and neither context nor previews are saved to plugin storage or logged
+by this plugin. The model service processes the bounded input normally; provider
+retention policies are outside plugin storage guarantees.
+
+### Native inference and lifetime
+
+Registration uses `ctx.register_auxiliary_task('conversation_bookmarks_details', …)`
+and `ctx.on_unload` with a profile-bound facade. Supported
+`ctx.llm.acomplete_structured` resolves the current profile model/auth; no plugin
+credentials, provider SDK client, tools/agent loop, `side_question`, live-context
+replay or chat injection is used. Task defaults request `reasoning_effort: minimal`
+and native Responses `extra_body.reasoning.effort: minimal`; Hermes owns wire
+shaping, capability clamping and operator task overrides. Current gpt-6-astra maps
+minimal to its lowest supported effort, `low`, as verified on the real wire.
+Normal host retries/fallbacks apply; the plugin adds no retry loop.
+
+One request per profile and four per package/process may run concurrently. The
+whole operation has a 45-second deadline, also passed to the host, and a 1,600-token
+output allowance. Strict local validation rejects extra keys, missing fields,
+wrong types, invalid title/tags and non-text notes. Errors return controlled
+messages, not provider exceptions or raw output. Task registration is conditional:
+older hosts keep manual save support but cannot generate details. The facade must
+have been registered by the native Agent plugin loader in the serving process; a
+cold API-only in-process Dashboard that has only imported the router returns 503
+until native plugin registration runs. The plugin does not force discovery through
+private core imports. The native HTTP test explicitly exercises that host lifecycle.
+
+The shared editor applies validated metadata only to its current draft, preserving
+source references. Edits, selection changes, save, unmount, profile/connection
+changes and host disposal fence late completions. No generation request happens
+on selection or setting changes. Settings persist on blur; loading/error/retry
+states do not prevent manual saving. The user must separately review and save.
+
 ## Authenticated API
 
 Native mount: `/api/plugins/conversation-bookmarks`. Authentication, origin protection,
@@ -176,6 +252,8 @@ trusted package admission, and effective enablement belong to the Hermes host.
 | Method | Relative path | Result |
 |---|---|---|
 | GET | `/status` | Version and bound profile |
+| GET / PUT | `/generation/settings` | Profile-local previous-exchanges setting (0–100; default 20) |
+| POST | `/generation/draft` | Explicit bounded inference; validated AI draft and context counts; no save |
 | GET | `/sources/sessions` | Recent conversation choices; `q`, `limit`, `offset` |
 | GET | `/sources/sessions/{session_id}/responses` | Visible assistant-response choices for one bound-profile conversation |
 | GET | `/entries` | Search/filter/sort/page using `q`, `tag`, `sort`, `limit`, `offset` |
@@ -319,6 +397,27 @@ builds, and both native-loader browser suites. Fictional source banks and HTTP f
 are outside the repository and removed on exit; public-safe screenshots are retained.
 Native server lifespan workers/bootstrap are disabled in HTTP fixtures.
 
+Generation checks on a host exposing `ctx.llm` and task registration:
+
+```sh
+HERMES_DISABLE_LAZY_INSTALLS=1 "$PYTHON" tests/native_generation.py
+# Full paired real-loader matrix (requires the compatible local Shelf checkout):
+PYTHON="$PYTHON" npm run test:saved
+# Explicit opt-in paid request; fictional moon-orchard input only:
+"$PYTHON" tests/real_generation_smoke.py
+```
+
+`test_generation.py` is included in unittest discovery. It covers exact 0/20/100
+context, compaction copies, private carriers, future exclusion, complete exchanges,
+profile/settings isolation, native-source byte integrity, bounds, malformed output,
+timeout/error, concurrency and unload. Native generation proves authenticated
+HTTP → actual plugin registration → native model/wire shaping with a provider
+transport double. The separate real smoke verifies the current profile route and
+actual wire effort/output, without reading native transcripts or saving a bookmark.
+Browser generation cases use real controls/adapters and a held HTTP response to
+exercise edit/selection/unmount/profile/connection fences; they are not live model
+or Electron-shell acceptance.
+
 ## Compatibility and verification
 
 ### Source chooser backend verification (unreleased)
@@ -422,7 +521,7 @@ by these tests. Context binding tests are separate from that transport boundary.
 
 ## Deliberate exclusions
 
-No automatic excerpts, observer hooks, independent plugin model calls, analytics, cloud sync, memory writes,
+No automatic excerpts, observer hooks, independent model client, analytics, cloud sync, memory writes,
 source database edits, import/export, bulk actions, source retention changes, or invented
 message-anchor navigation. The narrow source adapter is the compatibility boundary to
 revisit if Hermes changes its session schema or adds a suitable public read-only API.

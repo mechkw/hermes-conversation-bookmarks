@@ -1,4 +1,4 @@
-import React,{useEffect,useState,useId} from 'react';
+import React,{useEffect,useState,useId,useRef} from 'react';
 import {Button,Input,Textarea,SearchField,Choice,Field,Dialog,DialogFooter,EmptyState,ErrorState,Loader} from '@saved/presentation';
 const conversationTitle=item=>!item.title||item.title===`${item.source||'Conversation'} · ${item.id}`?'Untitled conversation':item.title;
 const date=value=>value==null?'Date unavailable':new Date(value*1000).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
@@ -38,15 +38,59 @@ export function BookmarkEditor({api,entry,busy,error,save,close,restoreFocus}){
  const [draft,setDraft]=useState(()=>entry?{...entry}:{title:'',note:'',tags:[],session_id:'',message_id:null});
  const [tags,setTags]=useState((entry?.tags||[]).join('\n'));
  const [conversationLabel,setConversationLabel]=useState(''),[responseLabel,setResponseLabel]=useState('');
- const change=(k,v)=>setDraft(d=>({...d,[k]:v}));
- return <Dialog restoreFocus={restoreFocus} title={entry?'Edit bookmark':'Save a bookmark'} description="Choose a conversation and, optionally, one assistant response. Notes are yours; no transcript is copied." busy={busy} close={close}>
-  <form onSubmit={e=>{e.preventDefault();if(!busy&&draft.session_id&&draft.title.trim())save({...draft,tags:tags.split('\n').map(t=>t.trim()).filter(Boolean)});}}>
+ const [previous,setPrevious]=useState('20'),[settingsReady,setSettingsReady]=useState(false),[settingsBusy,setSettingsBusy]=useState(false),[settingsError,setSettingsError]=useState(''),[settingsRetry,setSettingsRetry]=useState(0);
+ const [generating,setGenerating]=useState(false),[generationError,setGenerationError]=useState(''),[generationNotice,setGenerationNotice]=useState('');
+ const life=useRef(0),edits=useRef(0),working=useRef(false),settingVersion=useRef(0),savedPrevious=useRef(null);
+ useEffect(()=>{
+  const token=++life.current;setSettingsReady(false);
+  if(!entry)api('/generation/settings').then(data=>{if(token===life.current){setPrevious(String(data.previous_exchanges));savedPrevious.current=data.previous_exchanges;setSettingsReady(true);setSettingsError('');}}).catch(e=>{if(token===life.current)setSettingsError(e?.message||'Could not load generation settings.');});
+  return()=>{life.current++;edits.current++;};
+ },[api,entry,settingsRetry]);
+ const invalidate=()=>{edits.current++;setGenerationNotice('');setGenerationError('');};
+ const change=(k,v)=>{invalidate();setDraft(d=>({...d,[k]:v}));};
+ const validPrevious=/^(0|[1-9][0-9]?|100)$/.test(previous);
+ async function persistPrevious(){
+  if(!settingsReady||!validPrevious)return false;
+  if(Number(previous)===savedPrevious.current){setSettingsError('');return true;}
+  const token=life.current,version=++settingVersion.current,value=Number(previous);setSettingsBusy(true);setSettingsError('');
+  try{const data=await api('/generation/settings',{method:'PUT',body:{previous_exchanges:value}});if(token===life.current&&version===settingVersion.current)savedPrevious.current=data.previous_exchanges;return token===life.current&&version===settingVersion.current;}
+  catch(e){if(token===life.current&&version===settingVersion.current)setSettingsError(e?.message||'Could not save generation settings.');}
+  finally{if(token===life.current&&version===settingVersion.current)setSettingsBusy(false);}
+ }
+ async function generate(){
+  if(working.current||busy||!draft.message_id||!settingsReady||settingsBusy||!validPrevious||settingsError)return;
+  working.current=true;setGenerating(true);setGenerationError('');setGenerationNotice('');
+  const token=life.current,version=edits.current;
+  const current=()=>token===life.current;
+  try{
+   if(!await persistPrevious()||!current()||version!==edits.current)return;
+   const data=await api('/generation/draft',{method:'POST',body:{session_id:draft.session_id,message_id:draft.message_id}});
+   if(!current())return;
+   if(version!==edits.current){setGenerationNotice('Draft changed during generation. Your edits were kept; generate again when ready.');return;}
+   setDraft(d=>({...d,...data.draft}));setTags(data.draft.tags.join('\n'));
+   setGenerationNotice(`AI draft · review before saving. Used ${data.context.previous_exchanges} previous exchanges.${data.context.truncated?' Earlier context was shortened to fit the limit.':''}`);
+  }catch(e){if(current())setGenerationError(e?.message||'Could not generate details. Retry when ready.');}
+  finally{working.current=false;if(current())setGenerating(false);}
+ }
+ return <Dialog restoreFocus={restoreFocus} title={entry?'Edit bookmark':'Save a bookmark'} description="Choose a conversation and, optionally, one assistant response. Only your reviewed metadata is saved." busy={busy} close={close}>
+  <form onSubmit={e=>{e.preventDefault();if(!busy&&draft.session_id&&draft.title.trim()){invalidate();save({...draft,tags:tags.split('\n').map(t=>t.trim()).filter(Boolean)});}}}>
    <fieldset disabled={busy} className="hs-form-fields">
-    <SourcePicker api={api} path="/sources/sessions" label="Conversation" value={draft.session_id} selected={conversationLabel} disabled={busy} onChange={(value,item,label)=>{if(value===draft.session_id)return;setDraft(d=>({...d,session_id:value,message_id:null,title:d.title.trim()?d.title:(item?conversationTitle(item):'')}));setConversationLabel(label||'');setResponseLabel('');}}/>
+    <SourcePicker api={api} path="/sources/sessions" label="Conversation" value={draft.session_id} selected={conversationLabel} disabled={busy} onChange={(value,item,label)=>{if(value===draft.session_id)return;invalidate();setDraft(d=>({...d,session_id:value,message_id:null,title:d.title.trim()?d.title:(item?conversationTitle(item):'')}));setConversationLabel(label||'');setResponseLabel('');}}/>
     <SourcePicker key={draft.session_id} api={api} path={draft.session_id?`/sources/sessions/${encodeURIComponent(draft.session_id)}/responses`:null} label="Response (optional)" value={draft.message_id} selected={responseLabel} optional disabled={busy} onChange={(value,item,label)=>{change('message_id',value===''?null:Number(value));setResponseLabel(label||'');}}/>
+    {!entry&&<section aria-label="Generate bookmark details" className="hs-generation">
+     <Button variant="default" loading={generating} disabled={busy||generating||!draft.message_id||!settingsReady||settingsBusy||!validPrevious||Boolean(settingsError)} onClick={generate}>Generate details</Button>
+     <p className="hs-muted">Select an assistant response. On click, your model uses that response, its user request and earlier exchanges to draft details. Nothing after the response is sent. Review before saving.</p>
+     <Field title="Previous exchanges" description="0–100 · saved for this profile"><Input inputMode="numeric" maxLength={3} disabled={!settingsReady||settingsBusy} value={previous} onChange={e=>{invalidate();setPrevious(e.target.value);}} onBlur={persistPrevious} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}}/></Field>
+     {!validPrevious&&<p role="alert">Use a whole number from 0 to 100.</p>}
+     {settingsBusy&&<p role="status">Saving context setting…</p>}
+     {settingsError&&<ErrorState title="Could not load or save context setting" description={settingsError}><Button onClick={()=>settingsReady?persistPrevious():setSettingsRetry(n=>n+1)}>Retry context setting</Button></ErrorState>}
+     {generating&&<p role="status">Generating details… You can keep editing.</p>}
+     {generationError&&<ErrorState title="Could not generate details" description={generationError}/>}
+     {generationNotice&&<p role="status">{generationNotice}</p>}
+    </section>}
     <Field title="Title"><Input required maxLength={160} value={draft.title} onChange={e=>change('title',e.target.value)}/></Field>
-    <Field title="Note" description="Optional · written by you"><Textarea rows={4} maxLength={4000} value={draft.note} onChange={e=>change('note',e.target.value)}/></Field>
-    <Field title="Tags" description="One per line · commas stay within a tag"><Textarea rows={3} maxLength={820} value={tags} onChange={e=>setTags(e.target.value)}/></Field>
+    <Field title="Note" description="Optional · review or write your own"><Textarea rows={4} maxLength={4000} value={draft.note} onChange={e=>change('note',e.target.value)}/></Field>
+    <Field title="Tags" description="One per line · commas stay within a tag"><Textarea rows={3} maxLength={820} value={tags} onChange={e=>{invalidate();setTags(e.target.value);}}/></Field>
    </fieldset>
    {entry&&entry.source_status!=='available'&&<p className="hs-muted">The saved source may be unavailable. Keeping these choices preserves its reference when you edit the title, note or tags.</p>}
    {error&&<ErrorState title="Could not save bookmark" description={error}/>}

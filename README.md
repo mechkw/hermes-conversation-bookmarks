@@ -18,8 +18,9 @@ finally clicked, or the answer you will need again. A bookmark gives it a place 
 without turning the whole chat into another document.
 
 **A name. A note. A way back.** No automatic transcript collector or new account.
-The plugin makes no model calls of its own; when you request a save with omitted
-metadata, your current Hermes agent completes it using that conversation's context.
+In manual Add, **Generate details** makes an explicit, bounded model request and fills
+an AI draft for review—never an automatic save. `/bookmark` with omitted metadata
+instead asks your current Hermes agent to complete and save it.
 
 ## Quick start
 
@@ -128,6 +129,12 @@ explicit reference when that context is missing. In **Saved → Bookmarks**, cho
 choose a **Response** from its recent assistant replies. Search the response previews
 to find the answer you meant, or leave **Entire conversation** selected. No IDs to copy.
 
+For a selected response, click **Generate details** to draft Title, Note and Tags.
+**Previous exchanges** defaults to 20, accepts 0–100, and is saved for this profile.
+The request includes the selected reply, its preceding real user request and up to
+that many earlier exchanges—nothing after the reply. Review or edit the draft, then
+click **Save bookmark**. Entire-conversation bookmarks can still be written manually.
+
 Search titles, notes, and tags; filter by tag; sort by newest, oldest, or title. Edit the
 annotations without rewriting the conversation. Revision checks prevent silent overwrites.
 
@@ -148,7 +155,9 @@ a fact, inject it into future prompts, or start a background summarization job.
 The plugin keeps its own metadata. Native conversations remain owned by Hermes.
 The conversation/response chooser reads recent session details and short assistant-reply
 previews on demand from the current profile. Those previews are not stored in your
-bookmark or automatically added to its note. Removing a bookmark does not delete a
+bookmark or automatically added to its note. Only clicking Generate details sends
+bounded visible context through Hermes’s configured model service; the resulting AI
+draft is stored only if you save it. Removing a bookmark does not delete a
 conversation, message, or memory.
 
 A bookmark is also **not a transcript backup**. If a source conversation is deleted or

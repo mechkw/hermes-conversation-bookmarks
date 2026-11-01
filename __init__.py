@@ -190,6 +190,13 @@ def _bookmark_command(raw_args, *, ctx, session_id=None, session_key=None):
 
 def register(ctx):
     api = _service()
+    # Older hosts retain deterministic manual saving; only generation needs the
+    # supported stateless facade and lifecycle/task registration APIs.
+    if all(hasattr(ctx, name) for name in ('llm', 'register_auxiliary_task', 'on_unload')):
+        ctx.register_auxiliary_task(api.GENERATION_TASK, display_name='Bookmark details',
+            description='User-requested bookmark metadata draft from bounded historical context',
+            defaults=api.GENERATION_DEFAULTS)
+        api.bind_generation(ctx)
     save_schema = api.EntryInput.model_json_schema()
     save_schema["required"] = [key for key in save_schema["required"] if key != "session_id"]
     save_schema["properties"]["session_id"]["description"] = "Exact current-profile stored session ID. Omit only to use reliable host invocation context; missing context fails closed."

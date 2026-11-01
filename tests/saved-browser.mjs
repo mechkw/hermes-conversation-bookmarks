@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {realUI} from './native-components.mjs';
 import {metadataCases,pendingMutationCases,sourceFenceCases} from './metadata-browser.mjs';
 import {selectorCases} from './selector-browser.mjs';
+import {generationCases} from './generation-browser.mjs';
 import {sourceDetailCases,titleBoundsCases,focusEditorCases} from './review-browser.mjs';
 import {sourceFixture} from './native-source-fixture.mjs';
 import {mkdtemp, readFile, rm, mkdir, writeFile} from 'node:fs/promises';
@@ -26,7 +27,8 @@ for(const repo of [root,peer]){
  try{for(const file of ['ui/Saved.jsx','desktop/plugin.js','dashboard/dist/index.js','tests/saved-browser.mjs'])await readFile(join(repo,file));}
  catch{throw new Error('Paired Saved verification requires both built local repositories. Set SAVED_PEER_REPO; see docs/SAVED_UI.md. Missing inputs in '+repo);}
 }
-for(const file of ['ui/Saved.jsx','ui/saved-coordinator.js','tests/saved-browser.mjs','tests/saved_browser_server.py']){
+// The shared UI protocol must match; each product owns its scenario extensions.
+for(const file of ['ui/Saved.jsx','ui/saved-coordinator.js']){
  if(!(await readFile(join(root,file))).equals(await readFile(join(peer,file))))throw new Error('Paired Saved revisions differ: '+file+'. Build matching local changes; CI does not fetch an unpublished companion. See docs/SAVED_UI.md.');
 }
 const scratch=await mkdtemp(join(process.env.TMPDIR||tmpdir(),'q-'));
@@ -272,7 +274,7 @@ try{
      expect(await page.locator('.hs-saved-tabs button,.hs-saved-missing button,.hs-saved-link').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height>0).every(n=>n.getBoundingClientRect().height>0))).toBe(true);
      await page.screenshot({path:join(proof,`${scenario}-${adapter}-${order}-${width}.png`),fullPage:true});
     }
-    if(scenario==='both'){await focusEditorCases(page,adapter,api,proof);await titleBoundsCases(page,adapter,api,proof);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await metadataCases(page,adapter,api);await pendingMutationCases(page,adapter,api,base);await sourceFenceCases(page,adapter,base);}
+    if(scenario==='both'){await focusEditorCases(page,adapter,api,proof);await titleBoundsCases(page,adapter,api,proof);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api);await pendingMutationCases(page,adapter,api,base);await sourceFenceCases(page,adapter,base);}
     if(fixture.enabled.length===2){
      await page.getByRole('tab',{name:'Bookmarks',exact:true}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toBeFocused();await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toHaveAttribute('aria-selected','true');
      if(adapter==='desktop'){

@@ -66,7 +66,21 @@ You can also use **Saved → Bookmarks → Save bookmark**:
 2. Leave **Response** set to **Entire conversation**, or choose a recent assistant
    reply. Search the reply previews to narrow the choices; user prompts and tool
    messages are not offered.
-3. Give it a title, optionally add a note and tags, and save.
+3. Write the title, note and tags, or select a reply and click **Generate details**.
+   Review the AI draft, edit anything you want, then save. Generation does not save.
+
+**Previous exchanges** defaults to 20 and persists per profile (whole numbers 0–100).
+Generate details sends the selected response, its preceding real user request, and
+up to that many earlier logical exchanges through Hermes’s configured model service.
+It never sends later conversation text. A notice reports the actual count and any
+shortening of earlier context. Oversized or unavailable focal text is refused rather
+than silently shortened. Entire conversation remains a manual-save option.
+
+You can edit while generation runs; a late result cannot overwrite those edits or a
+changed selection. Errors leave your draft intact; click Generate details again to
+retry. The setting has its own Retry control. Switching profile/connection or closing
+the editor discards late results. Older hosts without plugin LLM support can still
+save manually; generation requires a current host and indexed native history.
 
 The selected native IDs stay behind the controls. Changing the conversation clears
 any response selection so an answer from another conversation cannot carry over.
@@ -219,9 +233,12 @@ $HERMES_HOME/plugin-data/conversation-bookmarks/bookmarks.sqlite3
 ```
 
 The plugin checks existence against that profile's `state.db`, opened read-only. It reads
-only source identifiers/profile labels needed for validation—not message content,
-reasoning, prompts, or transcript excerpts. It never initializes or repairs the native
-source database.
+source identifiers/profile labels for ordinary save validation. Explicit chooser
+requests read bounded visible previews; Generate details additionally reads bounded
+visible user/assistant context for user-initiated inference. Hidden, synthetic,
+system/tool, reasoning and media payloads are excluded. Neither context nor previews
+are persisted; only reviewed annotations and the context-count setting are stored
+in the plugin database. It never initializes or repairs the native source database.
 
 The default profile commonly uses `~/.hermes`; named profiles have their own homes.
 A profile hint in a request is not permission to access another profile. If the host
@@ -262,6 +279,17 @@ can be installed while its connected backend is absent or disabled.
 Check the exact session ID, profile, and backend. For a message bookmark, confirm its
 native integer ID belongs to the same session. Do not substitute a platform message ID
 or choose the latest conversation as a workaround.
+
+### Generate details is unavailable
+
+Manual saving remains available. Generation needs the host’s plugin LLM/task APIs
+and native Agent plugin registration in the serving process. Normal `hermes serve`
+and `hermes dashboard` startup perform that registration before mounting the UI API;
+no chat warm-up is needed. After upgrading an already-running backend, restart only
+that backend to activate the new code. A custom host that imports only the API router
+must provide the normal plugin lifecycle; the plugin does not bootstrap private host
+registries. Missing timeline indices require opening the conversation in Hermes;
+the plugin never repairs native history.
 
 ### The source store is unavailable
 

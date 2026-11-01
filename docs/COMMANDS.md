@@ -46,6 +46,23 @@ Manual exact references and editing metadata for old/pruned sources remain suppo
 legacy message references are not restricted retroactively to chooser-visible responses.
 See [Technical guide](TECHNICAL.md#read-only-source-boundary) for exact privacy and bounds.
 
+## Manual AI draft (not a slash command)
+
+In Save bookmark, select an assistant response and click **Generate details**. This
+explicit click uses bounded prior context through the host’s stateless model API and
+fills Title, Note and Tags for review, without saving or injecting a live chat turn.
+Previous exchanges defaults to 20 and persists per profile (0–100); nothing after the
+response is sent. The separate `/bookmark` current-agent save behavior is unchanged.
+
+- `GET` / `PUT /api/plugins/conversation-bookmarks/generation/settings`: read/write
+  `{ "previous_exchanges": 20 }` in the already-bound profile.
+- `POST /api/plugins/conversation-bookmarks/generation/draft`: supply exact
+  `{ "session_id": "example-session-001", "message_id": 42 }`; returns `draft` and
+  `context` count/truncation metadata, not a saved record.
+
+All routes use native authentication. Context is read-only/transient; the AI draft
+becomes bookmark metadata only after explicit Save. See the [technical contract](TECHNICAL.md#manual-ai-draft).
+
 ## Menu and `/help`: verified host behavior, not a custom menu
 
 The plugin declares `provides_commands: [bookmark]` and uses public
