@@ -170,7 +170,7 @@ class EntryInput(BaseModel):
 
 class GenerationSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    previous_exchanges: int = Field(default=20, ge=0, le=100)
+    previous_exchanges: int = Field(default=10, ge=0, le=100)
 
 
 class GenerationRequest(BaseModel):
@@ -1072,7 +1072,7 @@ async def generate_draft(request: GenerationRequest, store: Store = Depends(requ
 def generation_settings(store: Store = Depends(request_store)):
     with store.connect() as conn:
         row = conn.execute("SELECT value FROM settings WHERE key='previous_exchanges'").fetchone()
-    return GenerationSettings(previous_exchanges=row[0] if row else 20).model_dump()
+    return GenerationSettings(previous_exchanges=row[0] if row else 10).model_dump()
 
 
 @router.put("/generation/settings")

@@ -117,7 +117,7 @@ class NativeGenerationContextTests(unittest.TestCase):
         response = self.generate(anchor)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['context'],
-                         {'previous_exchanges':0, 'requested_exchanges':20, 'truncated':True})
+                         {'previous_exchanges':0, 'requested_exchanges':10, 'truncated':True})
         self.assertEqual(self.messages(), [{'role':'user','content':'Retained human request'},
                                           {'role':'assistant','content':'Retained answer'}])
         self.client.put('/generation/settings', json={'previous_exchanges':0})
@@ -590,6 +590,7 @@ class NativeGenerationContextTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_compression_ancestry_deduplicates_and_cuts_off_at_selected_response(self):
+        self.client.put('/generation/settings', json={'previous_exchanges': 20})
         from agent.context_compressor import SUMMARY_PREFIX
         for i in range(24):
             self.append('user', f'Request {i}', timestamp=200-i)
@@ -735,7 +736,7 @@ class NativeGenerationContextTests(unittest.TestCase):
         self.materialize('root', 'tip')
         response = self.generate(anchor, 'tip')
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()['context'], {'previous_exchanges':1,'requested_exchanges':20,'truncated':True})
+        self.assertEqual(response.json()['context'], {'previous_exchanges':1,'requested_exchanges':10,'truncated':True})
         self.assertEqual([m['content'] for m in self.messages()], ['Recent request','Recent answer','Current request','Current full answer '+'y'*10000])
         self.client.put('/generation/settings', json={'previous_exchanges':0})
         response = self.generate(anchor, 'tip')
@@ -758,7 +759,7 @@ class NativeGenerationContextTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.messages(), [{'role':'user','content':'Actual carried request'}, {'role':'assistant','content':'Selected answer'}])
 
-    def test_native_blob_identity_default_twenty_and_zero(self):
+    def test_native_blob_identity_default_ten_explicit_twenty_and_zero(self):
         for i in range(23):
             self.append('user', f'Request {i}')
             anchor = self.append('assistant', f'Answer {i}')
@@ -768,9 +769,9 @@ class NativeGenerationContextTests(unittest.TestCase):
             identity = conn.execute('SELECT display_identity FROM messages WHERE id=?', (anchor,)).fetchone()[0]
         self.assertIsInstance(identity, bytes)
         self.assertEqual(len(identity), 32)
-        for previous in (20, 0):
-            if previous == 0:
-                self.client.put('/generation/settings', json={'previous_exchanges':0})
+        for previous in (10, 20, 0):
+            if previous != 10:
+                self.client.put('/generation/settings', json={'previous_exchanges':previous})
             response = self.generate(anchor)
             self.assertEqual(response.status_code, 200, response.text)
             expected = [dict(role=role, content=f'{label} {i}') for i in range(22-previous, 23)
@@ -778,7 +779,7 @@ class NativeGenerationContextTests(unittest.TestCase):
             self.assertEqual(self.messages(), expected)
             self.assertEqual(response.json()['context'], {'previous_exchanges':previous,
                 'requested_exchanges':previous, 'truncated':False})
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(len(self.calls), 3)
 
 
 if __name__ == '__main__':

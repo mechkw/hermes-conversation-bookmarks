@@ -125,12 +125,13 @@ Or ask Hermes:
 
 The save tool uses the session ID supplied by its actual invocation, or asks for an
 explicit reference when that context is missing. In **Saved → Bookmarks**, choose
-**Save bookmark**, pick a recent **Conversation** by title and date, then optionally
+**Save bookmark**, use **Choose a conversation** to pick a recent conversation by title and date, then optionally
 choose a **Response** from its recent assistant replies. Search the response previews
 to find the answer you meant, or leave **Entire conversation** selected. No IDs to copy.
 
 For a selected response, click **Generate details** to draft Title, Note and Tags.
-**Previous exchanges** defaults to 20, accepts 0–100, and is saved for this profile.
+**Context** offers 5, 10, 20 or 50 previous exchanges (default **10**), saved for this
+profile when you select a value. Existing preset choices are preserved.
 The request includes the selected reply, its preceding real user request and up to
 that many earlier exchanges—nothing after the reply. Review or edit the draft, then
 click **Save bookmark**. Entire-conversation bookmarks can still be written manually.

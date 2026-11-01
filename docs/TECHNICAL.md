@@ -176,9 +176,21 @@ Generation is separate from `/bookmark`'s live-agent save handoff. An explicit
 **Generate details** click invokes `POST /generation/draft` with only `session_id`
 and `message_id`. It returns `{draft: {title, note, tags}, context:
 {previous_exchanges, requested_exchanges, truncated}}`, never a saved entry.
-`GET`/`PUT /generation/settings` reads/writes `{previous_exchanges: 20}` in the
+`GET`/`PUT /generation/settings` reads/writes `{previous_exchanges: 10}` in the
 plugin metadata database; values must be strict integers from 0 through 100.
 All three routes use the native authenticated, profile-bound plugin transport.
+
+The single-column editor places Generate details on the left and the **Context**
+selector on the right of one row, followed by full-width Title, Note and Tags.
+The selector offers exactly 5/10/20/50 (new/unset default 10). Existing presets are
+preserved. Legacy non-preset API values display as 10 without mount-time writes;
+explicit selection persists immediately, and explicit Generate persists the shown
+value before inference. The API retains strict integer 0–100 compatibility.
+Search-window guidance lives in hover/keyboard-focus Previous/Next tooltips,
+including focusable wrappers for disabled pagers: 1000 recent conversations and
+500 recent assistant responses, with truncation reported from the actual response.
+Desktop uses the public SDK Tooltip primitives; Dashboard has no public tooltip export, so its
+adapter supplies semantic hover/focus/Escape behavior without private imports.
 
 ### Context boundary
 
@@ -279,7 +291,7 @@ trusted package admission, and effective enablement belong to the Hermes host.
 | Method | Relative path | Result |
 |---|---|---|
 | GET | `/status` | Version and bound profile |
-| GET / PUT | `/generation/settings` | Profile-local previous-exchanges setting (0–100; default 20) |
+| GET / PUT | `/generation/settings` | Profile-local previous-exchanges setting (0–100; default 10) |
 | POST | `/generation/draft` | Explicit bounded inference; validated AI draft and context counts; no save |
 | GET | `/sources/sessions` | Recent conversation choices; `q`, `limit`, `offset` |
 | GET | `/sources/sessions/{session_id}/responses` | Visible assistant-response choices for one bound-profile conversation |

@@ -69,11 +69,14 @@ You can also use **Saved → Bookmarks → Save bookmark**:
 3. Write the title, note and tags, or select a reply and click **Generate details**.
    Review the AI draft, edit anything you want, then save. Generation does not save.
 
-**Previous exchanges** defaults to 20 and persists per profile (whole numbers 0–100).
+**Context** offers 5, 10, 20 or 50 previous exchanges, defaulting to **10**. Explicit
+selection saves the choice for this profile; existing presets (including 5) remain
+selected. A legacy non-preset API value displays as 10 without an opening-time write;
+clicking Generate details saves that displayed value before requesting a draft.
 Generate details sends the selected response, its preceding real user request, and
 up to that many earlier logical exchanges through Hermes’s configured model service.
-It never sends later conversation text. A notice reports the actual count and any
-shortening of earlier context. Oversized or unavailable focal text is refused rather
+It never sends later conversation text. A compact notice flags any shortening of earlier context;
+the API response includes the actual and requested counts. Oversized or unavailable focal text is refused rather
 than silently shortened. Entire conversation remains a manual-save option.
 
 You can edit while generation runs; a late result cannot overwrite those edits or a

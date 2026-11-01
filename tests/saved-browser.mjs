@@ -7,6 +7,7 @@ import {realUI} from './native-components.mjs';
 import {metadataCases,pendingMutationCases,sourceFenceCases} from './metadata-browser.mjs';
 import {selectorCases} from './selector-browser.mjs';
 import {generationCases} from './generation-browser.mjs';
+import {editorUXCases} from './editor-ux-browser.mjs';
 import {sourceDetailCases,titleBoundsCases,focusEditorCases} from './review-browser.mjs';
 import {sourceFixture} from './native-source-fixture.mjs';
 import {mkdtemp, readFile, rm, mkdir, writeFile} from 'node:fs/promises';
@@ -129,7 +130,7 @@ const stubPlugin={name:'host-boundary-doubles',setup(b){
  b.onLoad({filter:/.*/,namespace:'qa'},args=>({contents:({keybind:'export const useKeybindHint=()=>null;',hermes:'export const getHermesConfigRecord=async()=>({}),retainConfigReadOrigin=x=>x,saveHermesConfig=async()=>({ok:true});',api:apiStub,profile:'export const dashboardServingProfile=()=>"default";',utils:'export const cn=(...a)=>a.join(" "),timeAgo=()=>"",isoTimeAgo=()=>"";',i18n:'export const useI18n=()=>({t:{}});',sdk:sdkStub,fs:'export const isReadFileErrorResult=()=>false;',notifications:'export const notifyError=(e)=>{throw e;};',events:'export const trackGatewayEventDisposers=(track,fn)=>fn();',plugin:contextStub})[args.path],loader:'js',resolveDir:root}));
 }};
 const pins={};
-for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx',repo.endsWith('bookmarks')?'ui/Bookmarks.jsx':'ui/Shelf.jsx','tests/saved-browser.mjs','tests/saved_browser_server.py','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/collection-focus.js','ui/style.css',...(repo.endsWith('bookmarks')?['ui/BookmarkEditor.jsx']:[]),'tests/review-browser.mjs','tests/selector-browser.mjs','tests/metadata-browser.mjs','tests/native-components.mjs'])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
+for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx',repo.endsWith('bookmarks')?'ui/Bookmarks.jsx':'ui/Shelf.jsx','tests/saved-browser.mjs','tests/saved_browser_server.py','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/collection-focus.js','ui/style.css',...(repo.endsWith('bookmarks')?['ui/BookmarkEditor.jsx','tests/editor-ux-browser.mjs','tests/generation-browser.mjs','dashboard/plugin_api.py']:[]),'tests/review-browser.mjs','tests/selector-browser.mjs','tests/metadata-browser.mjs','tests/native-components.mjs'])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
 async function independentState(page,fixture,api,base,auth,scenario,order){
  await page.waitForFunction(()=>window.__QA_READY__);
  await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(1);
@@ -274,7 +275,7 @@ try{
      expect(await page.locator('.hs-saved-tabs button,.hs-saved-missing button,.hs-saved-link').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height>0).every(n=>n.getBoundingClientRect().height>0))).toBe(true);
      await page.screenshot({path:join(proof,`${scenario}-${adapter}-${order}-${width}.png`),fullPage:true});
     }
-    if(scenario==='both'){await focusEditorCases(page,adapter,api,proof);await titleBoundsCases(page,adapter,api,proof);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api);await pendingMutationCases(page,adapter,api,base);await sourceFenceCases(page,adapter,base);}
+    if(scenario==='both'){await editorUXCases(page,adapter,api,proof);await focusEditorCases(page,adapter,api,proof);await titleBoundsCases(page,adapter,api,proof);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api);await pendingMutationCases(page,adapter,api,base);await sourceFenceCases(page,adapter,base);}
     if(fixture.enabled.length===2){
      await page.getByRole('tab',{name:'Bookmarks',exact:true}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toBeFocused();await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toHaveAttribute('aria-selected','true');
      if(adapter==='desktop'){

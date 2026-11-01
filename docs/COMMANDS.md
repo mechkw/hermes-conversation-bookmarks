@@ -51,11 +51,12 @@ See [Technical guide](TECHNICAL.md#read-only-source-boundary) for exact privacy 
 In Save bookmark, select an assistant response and click **Generate details**. This
 explicit click uses bounded prior context through the host’s stateless model API and
 fills Title, Note and Tags for review, without saving or injecting a live chat turn.
-Previous exchanges defaults to 20 and persists per profile (0–100); nothing after the
+**Context** offers 5, 10, 20 or 50 previous exchanges, defaults to 10, and persists
+per profile on selection. The API still accepts integers 0–100; nothing after the
 response is sent. The separate `/bookmark` current-agent save behavior is unchanged.
 
 - `GET` / `PUT /api/plugins/conversation-bookmarks/generation/settings`: read/write
-  `{ "previous_exchanges": 20 }` in the already-bound profile.
+  `{ "previous_exchanges": 10 }` in the already-bound profile.
 - `POST /api/plugins/conversation-bookmarks/generation/draft`: supply exact
   `{ "session_id": "example-session-001", "message_id": 42 }`; returns `draft` and
   `context` count/truncation metadata, not a saved record.

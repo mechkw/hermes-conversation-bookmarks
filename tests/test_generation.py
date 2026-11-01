@@ -59,6 +59,7 @@ class GenerationTests(unittest.TestCase):
         return self.client.post('/generation/draft', json={'session_id': 'fictional-a', 'message_id': 204, **changes})
 
     def test_logical_copies_and_rich_scrub_do_not_leak_future_or_private_rows(self):
+        self.client.put('/generation/settings', json={'previous_exchanges': 20})
         with database(self.home / 'state.db') as db:
             db.execute('UPDATE messages SET active=0,compacted=1 WHERE id IN (201,202)')
             for old, new in ((201, 501), (202, 502)):
@@ -177,7 +178,7 @@ class GenerationTests(unittest.TestCase):
         ctx = SimpleNamespace(llm=SimpleNamespace(acomplete_structured=complete), on_unload=lambda callback: None)
         api.bind_generation(ctx)
         before = (self.home / 'state.db').read_bytes()
-        for count, first in ((0, 203), (20, 163), (100, 3)):
+        for count, first in ((0, 203), (10, 183), (20, 163), (100, 3)):
             self.client.put('/generation/settings', json={'previous_exchanges': count})
             result = self.client.post('/generation/draft', json={'session_id': 'fictional-a', 'message_id': 204})
             self.assertEqual(result.status_code, 200, result.text)
@@ -226,7 +227,7 @@ class GenerationTests(unittest.TestCase):
         self.client.put('/generation/settings',json={'previous_exchanges':0})
         with patch.object(api,'bound_home',return_value=other):
             api.bind_generation(self.ctx)
-            self.assertEqual(self.client.get('/generation/settings').json()['previous_exchanges'],20)
+            self.assertEqual(self.client.get('/generation/settings').json()['previous_exchanges'],10)
             response=self.generate()
             self.assertEqual(response.status_code,200,response.text)
             self.assertEqual(json.loads(self.calls[-1]['input'][0]['text'])['messages'][-1]['content'],'OTHER profile answer')
@@ -235,7 +236,7 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn('OTHER',self.calls[-1]['input'][0]['text'])
 
     def test_settings_default_persist_validation_and_profile_isolation(self):
-        self.assertEqual(self.client.get('/generation/settings').json(), {'previous_exchanges': 20})
+        self.assertEqual(self.client.get('/generation/settings').json(), {'previous_exchanges': 10})
         for n in (0, 100, 20):
             response = self.client.put('/generation/settings', json={'previous_exchanges': n})
             self.assertEqual(response.status_code, 200, response.text)
@@ -245,5 +246,5 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(self.client.get('/generation/settings?profile=foreign').status_code, 409)
         other = Path(self.temp.name) / 'profiles' / 'other'
         with patch.object(api, 'bound_home', return_value=other):
-            self.assertEqual(self.client.get('/generation/settings').json(), {'previous_exchanges': 20})
+            self.assertEqual(self.client.get('/generation/settings').json(), {'previous_exchanges': 10})
         self.assertEqual(self.client.get('/entries').json()['total'], 0)

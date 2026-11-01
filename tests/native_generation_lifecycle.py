@@ -28,7 +28,7 @@ SOURCE = Path(os.environ.get('HERMES_SOURCE', Path.home()/'.hermes/hermes-agent'
 SESSION = 'fictional-cold-generation'
 TOKEN = 'fictional-lifecycle-token'
 DRAFT = {'title': 'Moon orchard', 'note': 'Blue glowing pears, harvested at moonrise.', 'tags': ['fiction']}
-EXPECTED_CONTEXT = [dict(role=role, content=f'{label} {i}') for i in range(3,22)
+EXPECTED_CONTEXT = [dict(role=role, content=f'{label} {i}') for i in range(13,22)
     for role, label in (('user','Orchard request'), ('assistant','Orchard answer'))] + [
     {'role':'user', 'content':'Preserve the moon orchard'}, {'role':'assistant', 'content':'Preserved orchard'},
     {'role':'user', 'content':'Use blue pears instead'}, {'role':'assistant', 'content':'Blue pears selected'}]
@@ -192,7 +192,7 @@ def main():
                 assert content[-1]['type'] == 'text'
                 context = json.loads(content[-1]['text'])['messages']
                 assert context == EXPECTED_CONTEXT, context
-                assert result['context'] == {'previous_exchanges':20, 'requested_exchanges':20, 'truncated':False}, result
+                assert result['context'] == {'previous_exchanges':10, 'requested_exchanges':10, 'truncated':False}, result
                 assert 'PRIVATE' not in json.dumps(wire) and 'FUTURE' not in json.dumps(wire)
                 assert 'tools' not in wire
                 assert wire.get('reasoning_effort') == 'minimal' or wire.get('reasoning', {}).get('effort') == 'minimal', wire
