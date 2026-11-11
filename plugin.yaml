@@ -10,6 +10,10 @@ provides_tools:
   - conversation_bookmark_delete
 provides_commands:
   - bookmark
+  - bookmarks
+provides_hooks:
+  - on_session_reset
+  - on_session_delete
 python_dependencies:
   - "fastapi>=0.115,<1"
   - "pydantic>=2.8,<3"

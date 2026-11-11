@@ -1,6 +1,7 @@
 import React,{useId,useState} from 'react';
-import {Button as NativeButton,Input,Textarea,SearchField,Select,SelectTrigger,SelectValue,SelectContent,SelectItem,Tooltip,TooltipProvider,TooltipTrigger,TooltipContent,Dialog as NativeDialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter,ListRow,Tabs,TabsList,TabsTrigger,EmptyState,ErrorState as NativeErrorState,Loader} from '@hermes/plugin-sdk';
-export {Input,Textarea,SearchField,DialogFooter,EmptyState,Loader};
+import {Button as NativeButton,Input,Textarea,SearchField,Select,SelectTrigger,SelectValue,SelectContent,SelectItem,Tooltip,TooltipProvider,TooltipTrigger,TooltipContent,Dialog as NativeDialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter,ListRow,Checkbox,Switch,Codicon,Tabs,TabsList,TabsTrigger,EmptyState,ErrorState as NativeErrorState,Loader} from '@hermes/plugin-sdk';
+export {Input,Textarea,SearchField,DialogFooter,EmptyState,Loader,Checkbox,Switch};
+export function IconButton({icon,label,...props}){return <Hint label={label} name={label} disabled={props.disabled}><Button aria-label={label} {...props}><Codicon name={icon}/></Button></Hint>;}
 // This adapter only translates domain props. The host owns control appearance,
 // portals, keyboard interaction, focus trapping and disabled/loading treatment.
 export function Button({variant='secondary',type='button',loading,children,...props}){return <NativeButton type={type} variant={variant} loading={loading} aria-label={loading&&typeof children==='string'?children:undefined} {...props}>{children}</NativeButton>;}

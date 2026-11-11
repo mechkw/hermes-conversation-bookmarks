@@ -108,7 +108,9 @@ def _handoff(ctx, supplied, missing, session_id, session_key):
 
 _USAGE = ('Usage: /bookmark [title] [#tag1, tag2] [--description "text"]\n'
           'Omitted title, tags and description are completed by the current agent. /bookmark help for help.')
-_HELP = ('Usage:\n/bookmark — request a bookmark of this current conversation\n'
+_HELP = ('Browse: /bookmarks or /bookmark browse [words]\nAdd: /bookmarks add or /bookmark add [metadata]\n'
+         'Native Telegram Add offers a title-only reference for explicit confirmation; notes and tags stay empty.\n'
+         'Bare /bookmark keeps its original current-conversation capture behavior.\nUsage:\n/bookmark — request a bookmark of this current conversation\n'
          '/bookmark [title] [#tag1, tag2] [--description "text"] — supply any or all metadata\n'
          '/bookmark help — show this syntax without saving\n'
          'The current agent generates only missing title, tags and description, then saves, reads back '
@@ -190,6 +192,18 @@ def _bookmark_command(raw_args, *, ctx, session_id=None, session_key=None):
 
 def register(ctx):
     api = _service()
+    from .telegram_bookmarks import Controller
+    controller = Controller(ctx, api)
+    if hasattr(ctx, 'on_unload'):
+        ctx.on_unload(controller.close)
+    if hasattr(ctx, 'register_hook'):
+        ctx.register_hook('on_session_reset', controller.boundary)
+        ctx.register_hook('on_session_delete', controller.boundary)
+    if hasattr(ctx, 'register_platform_handler'):
+        try:
+            ctx.register_platform_handler('telegram', controller.factory)
+        except RuntimeError:
+            pass  # Official host isolation can refuse native platform handlers.
     # Older hosts retain deterministic manual saving; only generation needs the
     # supported stateless facade and lifecycle/task registration APIs.
     if all(hasattr(ctx, name) for name in ('llm', 'register_auxiliary_task', 'on_unload')):
@@ -215,8 +229,49 @@ def register(ctx):
         ctx.register_tool(name=name,toolset="conversation_bookmarks",description=description,
                           schema={"name":name,"description":description,"parameters":schema},
                           handler=handler,check_fn=lambda:True)
-    def bookmark_command(raw_args, *, session_id=None, session_key=None):
-        return _bookmark_command(raw_args, ctx=ctx, session_id=session_id, session_key=session_key)
+    def browse(query=''):
+        try:
+            data = api.Store(api.bound_home()).search(q=query[:200], limit=10)
+            lines = [f"Bookmarks · {data['total']} matching bookmarks"]
+            for entry in data['items']:
+                lines.append('• ' + entry['title'] + (' — ' + entry['note'][:200] if entry['note'] else ''))
+            if not data['items']:
+                lines.append('No matching bookmarks. Nothing is captured automatically.')
+            lines.append('Search: /bookmarks browse words. Capture: /bookmark add Title #tag --description "note". Help: /bookmarks help.')
+            return '\n'.join(lines)
+        except Exception:
+            return 'Bookmark storage is unavailable. Nothing saved.'
+
+    def dispatch(raw_args, *, plural=False, session_id=None, session_key=None, platform=None, source=None):
+        text = raw_args.strip()
+        if text == 'help':
+            return _HELP
+        if (plural and not text) or text == 'browse' or text.startswith('browse '):
+            query = text[6:].strip() if text.startswith('browse') else ''
+            if platform == 'telegram':
+                identity = controller.identity(source, session_id, session_key)
+                if controller.application is not None:
+                    return controller.send(identity, query, epoch=controller.epoch)
+                if not controller.permitted(identity):
+                    return 'Bookmarks unavailable: an authorized Telegram owner and current session are required. Nothing saved.'
+            return browse(query)
+        if text == 'add' or text.startswith('add '):
+            text = text[3:].strip()
+            if not text and platform == 'telegram' and controller.application is not None:
+                return controller.send(controller.identity(source, session_id, session_key), add=True, epoch=controller.epoch)
+        elif plural:
+            return 'Use /bookmarks browse [words], /bookmarks add [metadata], or /bookmarks help. Nothing saved.'
+        return _bookmark_command(text, ctx=ctx, session_id=session_id, session_key=session_key)
+
+    def bookmark_command(raw_args, *, session_id=None, session_key=None, platform=None, source=None):
+        return dispatch(raw_args, session_id=session_id, session_key=session_key, platform=platform, source=source)
+
+    def bookmarks_command(raw_args, *, session_id=None, session_key=None, platform=None, source=None):
+        return dispatch(raw_args, plural=True, session_id=session_id, session_key=session_key, platform=platform, source=source)
+
+    ctx.register_command('bookmarks', bookmarks_command,
+                         description='Browse bookmarks; add or help', args_hint='browse [words] | add [metadata] | help',
+                         argument_mode='text')
 
     ctx.register_command("bookmark", bookmark_command,
                          description="Save this chat; /bookmark help",

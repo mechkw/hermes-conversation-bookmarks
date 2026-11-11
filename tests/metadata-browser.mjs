@@ -1,9 +1,9 @@
 // Metadata regressions use actual host components/loaders and the fictional API.
 import {expect} from '@playwright/test';
-export async function metadataCases(page,adapter,api){
+export async function metadataCases(page,adapter,api,products=['conversation-bookmarks','delivery-shelf']){
  const dialog=()=>page.getByRole('dialog');
- const choose=async(label,name)=>{await page.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name,exact:true}).click();};
- for(const id of ['conversation-bookmarks','delivery-shelf']){
+ const choose=async(label,name)=>{if(await page.getByRole('dialog').count()&&!await page.getByRole('combobox',{name:label,exact:true}).count())await page.getByRole('dialog').getByText('More options',{exact:true}).click();await page.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name,exact:true}).click();};
+ for(const id of products){
   const bookmarks=id==='conversation-bookmarks',tab=bookmarks?'Bookmarks':'Deliverables',text=bookmarks?'note':'description',edit=bookmarks?'Edit bookmark':'Edit metadata',field=bookmarks?'Note':'Description';
   const tags=['design, decisions','say "hello"','café 日本語'];
   const prefix='/api/plugins/'+id;
@@ -14,13 +14,13 @@ export async function metadataCases(page,adapter,api){
    await dialog().getByRole('button',{name:'Preview text'}).click();await expect(dialog().locator('pre')).not.toBeEmpty();expect(await dialog().locator('pre script')).toHaveCount(0);
    const downloading=page.waitForEvent('download');await dialog().getByRole('button',{name:'Download file'}).click();expect((await downloading).suggestedFilename()).toBe('example.md');
   }else if(adapter==='desktop'){
-   await dialog().getByRole('button',{name:'Open conversation'}).click();await expect.poll(()=>page.evaluate(()=>window.__QA_OPENED__?.id)).toBe('fictional-session-01');
+   await page.getByRole('button',{name:'Open conversation'}).click();await expect.poll(()=>page.evaluate(()=>window.__QA_OPENED__?.id)).toBe('fictional-session-01');
   }
-  await dialog().getByRole('button',{name:edit}).click();await dialog().getByLabel(field,{exact:true}).fill('Only metadata changed.');
+  await page.getByRole('button',{name:edit}).click();await dialog().getByLabel(field,{exact:true}).fill('Only metadata changed.');
   await dialog().getByRole('button',{name:'Save changes'}).click();await expect(dialog()).toHaveCount(0);
   let current=await api(id,'/entries/'+seeded.id);expect(current.tags).toEqual(tags);expect(current[text]).toBe('Only metadata changed.');
   expect((await api(id,'/entries?tag='+encodeURIComponent(tags[0]))).items.map(x=>x.id)).toEqual([seeded.id]);
-  await page.getByRole('button',{name:seeded.title,exact:true}).click();await dialog().getByRole('button',{name:edit}).click();
+  await page.getByRole('button',{name:seeded.title,exact:true}).click();await page.getByRole('button',{name:edit}).click();
   await dialog().getByLabel(bookmarks?'Tags':'Tags (one per line)',{exact:true}).fill('changed, intact\ncafé 日本語');
   if(!bookmarks)await choose('Kind','report');
   await dialog().getByRole('button',{name:'Save changes'}).click();await expect(dialog()).toHaveCount(0);
@@ -31,7 +31,7 @@ export async function metadataCases(page,adapter,api){
   await page.getByRole('button',{name:'Filter tag changed, intact',exact:true}).click();await expect(page.getByRole('button',{name:seeded.title,exact:true})).toBeVisible();await page.getByRole('button',{name:'Clear filters'}).click();
   if(bookmarks)await choose('Sort','Title A–Z');else {await choose('Kind','report');await expect(page.getByRole('button',{name:seeded.title,exact:true})).toBeVisible();await page.getByRole('button',{name:'Clear filters'}).click();}
   // Real revision conflict leaves draft/dialog open.
-  await page.getByRole('button',{name:seeded.title,exact:true}).click();await dialog().getByRole('button',{name:edit}).click();
+  await page.getByRole('button',{name:seeded.title,exact:true}).click();await page.getByRole('button',{name:edit}).click();
   const keys=bookmarks?['title','note','tags','session_id','message_id','revision']:['title','description','kind','project','tags','file','session_id','revision'];
   const payload=Object.fromEntries(keys.map(k=>[k,current[k]]));
   current=await api(id,'/entries/'+seeded.id,{method:'PUT',body:JSON.stringify({...payload,[text]:'Concurrent edit'})});
@@ -43,9 +43,9 @@ export async function metadataCases(page,adapter,api){
   // Outage/retry, cancellation and a failed delete never auto-close the dialog.
   const listing='**'+prefix+'/entries?**';await page.route(listing,route=>route.fulfill({status:503,json:{detail:'Fictional outage'}}));
   await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Fictional outage');await page.unroute(listing);await page.getByRole('button',{name:'Try again'}).click();
-  await page.getByRole('button',{name:seeded.title,exact:true}).click();await dialog().getByRole('button',{name:bookmarks?'Remove bookmark':'Remove from shelf'}).click();await dialog().getByRole('button',{name:bookmarks?'Keep bookmark':'Keep delivery'}).click();
+  await page.getByRole('button',{name:seeded.title,exact:true}).click();await page.getByRole('button',{name:bookmarks?'Remove bookmark':'Remove from shelf'}).click();await dialog().getByRole('button',{name:bookmarks?'Keep bookmark':'Keep delivery'}).click();
   expect((await api(id,'/entries/'+seeded.id)).id).toBe(seeded.id);
-  await page.getByRole('button',{name:seeded.title,exact:true}).click();await dialog().getByRole('button',{name:bookmarks?'Remove bookmark':'Remove from shelf'}).click();
+  await page.getByRole('button',{name:seeded.title,exact:true}).click();await page.getByRole('button',{name:bookmarks?'Remove bookmark':'Remove from shelf'}).click();
   const deleting='**'+prefix+'/entries/'+seeded.id+'*';await page.route(deleting,route=>route.request().method()==='DELETE'?route.fulfill({status:503,json:{detail:'Delete unavailable'}}):route.continue());
   await dialog().getByRole('button',{name:'Remove metadata'}).click();await expect(dialog().getByRole('alert')).toContainText('Delete unavailable');await page.unroute(deleting);
   await dialog().getByRole('button',{name:'Remove metadata'}).click();await expect(dialog()).toHaveCount(0);expect((await api(id,'/entries')).items.some(x=>x.id===seeded.id)).toBe(false);
@@ -53,11 +53,11 @@ export async function metadataCases(page,adapter,api){
  }
 }
 
-export async function pendingMutationCases(page,adapter,api,base){
- for(const id of ['conversation-bookmarks','delivery-shelf'])for(const change of ['profile',...(adapter==='desktop'?['connection','dispose']:['dispose'])]){
+export async function pendingMutationCases(page,adapter,api,base,products=['conversation-bookmarks','delivery-shelf']){
+ for(const id of products)for(const change of ['profile',...(adapter==='desktop'?['connection','dispose']:['dispose'])]){
   await page.goto(base+'/qa/'+adapter);await expect(page.getByRole('tab')).toHaveCount(2);await page.getByRole('tab',{name:id==='conversation-bookmarks'?'Bookmarks':'Deliverables',exact:true}).click();
   const old=(await api(id,'/entries')).items[0];await page.getByRole('button',{name:old.title,exact:true}).click();
-  const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:id==='conversation-bookmarks'?'Edit bookmark':'Edit metadata'}).click();
+  const dialog=page.getByRole('dialog');await page.getByRole('button',{name:id==='conversation-bookmarks'?'Edit bookmark':'Edit metadata'}).click();
   await dialog.getByLabel('Title',{exact:true}).fill(old.title);
   let release,seen;const held=new Promise(r=>release=r),entered=new Promise(r=>seen=r);
   const pattern='**/api/plugins/'+id+'/entries/'+old.id+'*';

@@ -1,427 +1,126 @@
-# Technical guide
+# Conversation Bookmarks technical reference
 
-[← README](../README.md) · [Everyday usage](OPERATIONS.md) · [Security](../SECURITY.md)
+[README](../README.md) · [Operations](OPERATIONS.md) · [Usage](USAGE.md) · [Security](../SECURITY.md)
 
-Conversation Bookmarks stores deliberate annotations and source references. It does not
-store transcripts, provide another memory backend, or intercept ordinary conversation.
-Explicit chooser requests may read recent session metadata and bounded, user-visible
-assistant-response previews. These previews are transient response data, not scraped,
-automatically collected, or copied into bookmark storage. Explicit Generate details
-requests additionally use bounded visible context for stateless inference; only
-reviewed AI annotations are persisted when the user saves.
+Conversation Bookmarks persists deliberate annotations and exact source references, not transcripts or delivered files. Source existence checks, requested chooser previews, and explicit generation have different read boundaries.
+
+## Runtime layout
+
+| Source | Responsibility |
+| --- | --- |
+| `__init__.py` | Four tools, singular/plural commands, current-session handoff, and generation registration. |
+| `telegram_bookmarks.py` | Optional native panels, owner policy, explicit reference-only Add confirmation, and callback lifetime. |
+| `dashboard/plugin_api.py` | Models, annotation store, read-only source adapter, generation collector, and authenticated routes. |
+| `ui/Bookmarks.jsx` | Collection, adjacent inspector, checkboxes, and confirmed removal. |
+| `ui/BookmarkEditor.jsx` | Conversation/response chooser, annotations, and generated draft. |
+| `ui/BookmarkSettings.jsx` | Profile-local display switches. |
+| `ui/desktop.jsx`, `ui/dashboard.jsx` | Host-specific transport and navigation. |
+| `desktop/plugin.js`, `dashboard/dist/index.js` | Built client bundles. |
+
+The package works without Delivery Shelf. When both are enabled, their providers share Saved navigation. Bookmarks remains references and annotations; Shelf remains delivered files and preserved versions. Native Desktop contributes **Plus → Bookmarks** and **Browse bookmarks**, which open browsing rather than silently capturing a source.
+
+## Persistence and input
+
+Data lives beneath the backend profile's Hermes home:
 
 ```text
-Native save/search/update/delete tools ────────────┐
-Dashboard → host fetchJSON → authenticated routes ├→ bound profile
-Desktop   → host ctx.rest  → authenticated routes ┘       │
-                                                        ├→ bookmarks.sqlite3 (metadata)
-                                                        └→ state.db (read-only checks / requested previews)
-
-Desktop Open conversation → host.openSession → native session navigation
+plugin-data/conversation-bookmarks/bookmarks.sqlite3
 ```
 
-## Source layout
+The store contains annotation entries and settings. Saved records include `id`, `created`, `updated`, and `revision`. `source_status` is computed from the native source store rather than a retained transcript copy. Updates/removal of the package do not erase this database.
 
-- `__init__.py`: four native tools, `/bookmark`, validated invocation context, locked lazy service import.
-- `plugin.yaml`, `VERSION`: unified package identity, capabilities, runtime dependencies.
-- `dashboard/plugin_api.py`: strict models, source adapter, metadata store, API routes.
-- `dashboard/manifest.json`: Dashboard page contribution.
-- `ui/Bookmarks.jsx`, `ui/style.css`: shared React interface and scoped styles.
-- `ui/dashboard.jsx`, `ui/desktop.jsx`: separate native host adapters.
-- `dashboard/dist/index.js`: ready-to-load Dashboard IIFE.
-- `desktop/plugin.js`: self-contained ESM using host `react` and `@hermes/plugin-sdk`.
+| Input | Contract |
+| --- | --- |
+| `title` | Trimmed, nonempty printable text, at most 160 characters. |
+| `note` | Optional text, at most 4,000 characters. Slash `--description` maps here. |
+| `tags` | Up to 20 printable strings, each 1–40 characters. Boundary-trimmed, Unicode-casefold deduplicated, first spelling retained. |
+| `session_id` | Exact bound-profile source, 1–160 letters, digits, `_`, `.`, `:`, or `-`. |
+| `message_id` | Optional positive JavaScript-safe native integer belonging to that session. Not a Telegram message ID. |
 
-The package is independent of Delivery Shelf. No Node build is required by end users.
-React comes from each host; relative runtime imports are not needed by Desktop's blob
-loader. Only the plugin's own route/sidebar are contributed—chat/composer surfaces are
-not replaced.
+Unknown keys and invalid types are rejected. HTTP POST/PUT bodies are bounded to 32 KiB. Tool validation is independent of advertised schemas. An omitted tool `session_id` can use reliable native invocation context. An explicit empty or malformed reference is not repaired into a guessed source.
 
-## Tools and input
+Create validates the source and reads back the exact stored ID. Creates are not idempotent. Updates require the current revision; a changed reference must validate again. An unchanged missing-source reference may remain while its annotations are edited. Delete removes metadata only and returns `source_deleted: false`.
 
-Toolset: `conversation_bookmarks`.
-
-| Tool | Purpose |
-|---|---|
-| `conversation_bookmark_save` | Save a validated reference and annotations |
-| `conversation_bookmark_search` | Search bookmark metadata |
-| `conversation_bookmark_update` | Replace metadata using the current revision |
-| `conversation_bookmark_delete` | Remove a bookmark using its ID and revision |
-
-All return JSON strings shaped as `{ "ok": true, "data": ... }` or
-`{ "ok": false, "error": ... }`.
-
-A fictional save payload:
-
-```json
-{
-  "title": "Launch decision",
-  "note": "Friday launch, reduced scope. Review deferred items next week.",
-  "tags": ["website", "launch"],
-  "session_id": "example-session-001",
-  "message_id": 42
-}
-```
-
-The supplied session must exist in the bound profile. The optional native message ID
-must belong to that exact session. Omit it for a conversation-level bookmark. When
-`session_id` is omitted from a tool call, the save handler may use the actual native
-invocation's session ID. Missing context fails; explicitly invalid/empty IDs are not
-silently repaired or replaced with a guessed source.
+## Commands and tools
 
 ### Native slash command
 
-`/bookmark [title] [#tag1, tag2] [--description "text"]` registers through
-`ctx.register_command` with named `session_id` and `session_key` context. Bare invocation
-requests a save; `/bookmark help` alone returns usage. The quoted description option is
-parsed separately so unquoted title apostrophes remain literal. The first start-of-input
-or whitespace-delimited `#` outside that description separates comma-separated tags.
-Description maps to `note`; explicit `--description ""` preserves an empty note.
+| Command | Meaning |
+| --- | --- |
+| `/bookmarks` | Browse without saving. |
+| `/bookmarks browse [words]`, `/bookmark browse [words]` | Search saved annotations. |
+| `/bookmarks add [metadata]`, `/bookmark add [metadata]` | Explicit current-conversation capture. Native Telegram bare Add instead opens a confirmation panel. |
+| `/bookmark` | Preserve legacy current-conversation capture, not browsing. |
+| `/bookmark [title] [#tags] [--description "text"]` | Supply any or all metadata for current-conversation capture. |
+| `/bookmarks help`, `/bookmark help` | Help without saving. |
 
-The shared `EntryInput` model validates supplied data and the exact native source ID.
-Read-only source validation runs before either path, including bare handoff. No missing
-or foreign source, malformed ID, invalid supplied metadata, or environment fallback is
-silently repaired. Tags are boundary-trimmed and case-insensitively deduplicated, keeping the first spelling/case;
-structured API/tool tags and one-tag-per-line UI retain literal commas.
+Unrecognized plural forms return guidance without saving. Reserved singular forms such as `browse`, `add`, and `help` dispatch as commands; use the editor/tools for a title that conflicts with command syntax. Slash tags are comma-separated. Editor tags use one per line and retain literal commas.
 
-When all three metadata fields are supplied, the command saves deterministically through
-the existing store; `Store.create` commits then calls `get` on the exact saved ID before
-returning. Its concise completion reports the actual stored title, tags and description.
+Fully supplied title, tags, and description save directly without inference. Omitted metadata requests a supported current-agent handoff through `ctx.inject_message`, using the actual source session and routing key. Gateway-assisted handoff needs explicit profile-local `plugins.entries.conversation-bookmarks.allow_gateway_injection`. Accepted work is queued, not saved. The agent is instructed to preserve supplied fields, save, and search/read back before confirming. Prompt instructions do not guarantee every model's adherence.
 
-When any field is omitted, the command **does not save a placeholder**. It calls only the
-supported `ctx.inject_message(content, role="user", session_key=session_key)` API, capturing
-its registration context rather than retaining a process-global host. The prompt carries
-an ASCII-escaped JSON data object with exact parsed supplied values, explicit missing-field
-names and the native source session ID. User metadata is framed as inert data, never
-interpolated into instructions. The agent is asked to generate only missing fields from
-its current conversation, preserve supplied data, call `conversation_bookmark_save`, then
-`conversation_bookmark_search` and verify the exact returned ID and metadata before a
-brief saved/generated-details completion. This command path does not fetch source
-transcripts; the separate explicit UI chooser endpoints provide bounded previews.
+Toolset `conversation_bookmarks` contains `conversation_bookmark_save`, `conversation_bookmark_search`, `conversation_bookmark_update`, and `conversation_bookmark_delete`. Tools return JSON strings with `ok` and either `data` or `error`. There is no file attachment tool or automatic linking to Shelf.
 
-Host acceptance is asynchronous, not a saved result. The accepted command returns empty
-text to avoid an extra completion/preamble. Missing/denied/unavailable injection yields an
-explicit failure and no command-side save or retry. Normal model processing, host safety
-controls, routing and delivery apply. The plugin does not own credentials, a separate
-model client, or a background collector. Prompt framing is not a guarantee of arbitrary
-model adherence; tests validate the handoff and tools, not a live LLM's behavior.
+## Search, inspection, and removal
 
-The [official injection contract](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins/#injecting-messages)
-and installed `hermes_cli/plugins_injection.py` establish the routing and default-off
-`plugins.entries.conversation-bookmarks.allow_gateway_injection: true` permission for
-gateway/TUI hosts. The plugin never writes that setting. The native routing key is passed
-unchanged, never synthesized from `session_id`; no new `origin` is constructed. Classic
-in-process CLI queues are host-owned. Gateway-backed classic CLI may retain the turn in
-history without displaying the reply; use the all-supplied path when needed. An accepted
-request can still fail later: search before retrying, and consult native gateway logs.
+Saved search covers titles, notes, and tags, not transcript content. Title/note matching uses SQLite `lower()` and literal substring matching. Tag substrings and exact tag filters use Unicode casefold. This is not a universal Unicode full-text search engine.
 
-The host dispatcher `hermes_cli/plugin_command_dispatch.py:invoke_plugin_command`
-passes only context parameters the handler declares. The gateway route is not inferred
-from that helper: inspected `gateway/run_inbound_hooks.py` resolves the registered
-command, looks up the existing session by the chat session key, builds session context,
-and forwards its `session_id` under the native session environment scope. A missing
-session remains empty; the command does not create or guess one.
+Sorts are `newest`, `oldest`, and `title`. Newest/oldest use original creation time, not last edit. API pages default to 50 and allow 1–100; the UI displays 30. Offset is bounded to 1,000,000.
 
-Both official v0.22.5 (`bf0203a794a07aac3ff764972ab9087baa4e4f4e`) and the development
-baseline contain this context-aware dispatcher and gateway route. The earlier claim
-that v0.22.5 slash callbacks lacked reliable context was incorrect. No minimum-version
-bump or CI pin change is required. The live official [plugin guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/)
-still includes one-argument examples; the installed native route is the evidence for
-optional named context. Older hosts invoking just `handler(raw_args)` fail helpfully,
-leaving explicit-ID tools/UI available. No environment session fallback is used.
+Selecting a title opens an adjacent inspector. Checkboxes separately select explicit bookmarks for removal. Page selection affects that page, and selected records can span pages up to the 100-item UI cap. Changing filters or refreshing clears the selection. There is no all-filtered selection. Bulk removal accepts 1–100 unique ID/revision pairs, reserves one SQLite transaction, validates every pair, and removes all or none.
 
-`tests/test_bookmark_command.py` exercises the confirmed public seam: native
-`invoke_plugin_command` → handler captured through `register(ctx)` → registered search
-tool readback, with native ContextVar profile binding and fictional SQLite sources.
-It also invokes the actual `GatewayInboundHooksMixin._hm_run_plugin_handler` with a
-fictional Telegram `MessageEvent` and routing index: an existing chat resolves its
-session, while a new chat with no session fails closed. Native event parsing, context
-building, and dispatch execute unchanged; the fixture owns the index, context lifetime,
-and executor (using native session variables and `asyncio.to_thread`).
-`tests/native_probe.py` separately uses the real host plugin loader and command lookup,
-then native command/tool dispatch and authenticated HTTP readback. These tests do not
-claim live Telegram delivery, Bot API menu registration, or transport testing.
+Bookmarks has no Archive, Trash, version history, or recovery timer. Confirmed removal is permanent annotation deletion, not source deletion.
 
-### Bounds
-
-- Title: trimmed, nonempty printable text, at most 160 characters.
-- Note/description: at most 4,000 characters; supplied by the caller or current agent
-  on an explicit save request, or reviewed from an explicit Generate details draft.
-- Tags: up to 20; each 1–40 printable characters; boundary-trimmed, case-insensitively deduplicated (Unicode casefold), retaining the first spelling/case.
-- Session ID: 1–160 characters from letters, digits, `_`, `.`, `:`, and `-`.
-- Message ID: positive native integer, at most 9,007,199,254,740,991. The UI conservatively
-  limits its entry field to 15 decimal digits. Platform message IDs are not inferred.
-- Search query: at most 200 characters; tag filter: at most 40.
-- Page size: 1–100; offset: 0–1,000,000. UI pages contain up to 30 entries.
-- Unknown JSON keys are rejected. POST/PUT bodies are bounded to 32 KiB while streaming,
-  before model parsing. Tool arguments are validated independently of their schemas.
-
-Bookmark search covers titles, notes, and tags, with an exact tag filter and
-newest/oldest/title sorting. It never searches transcript content. The separate source
-chooser searches recent session labels or visible response previews only, within the
-windows documented below. Saved records add an opaque ID, timestamps, a revision, and
-current source availability.
-
-Exact tag filtering compares Unicode casefolded values with bound SQL parameters,
-not SQLite's ASCII-only `lower`/`NOCASE`. It matches existing lowercase and new
-mixed-case records without migration; display spelling and order are unchanged by
-reads. Commas, quotes, `%` and `_` remain literal tag characters, not patterns or SQL.
-Casefold is not accent removal or Unicode normalization. Bookmark tag substring
-search also uses casefold, avoiding a Unicode search regression when tags are no
-longer stored lowercase. Title/note search semantics are unchanged.
-
-
-## Manual AI draft
-
-Generation is separate from `/bookmark`'s live-agent save handoff. An explicit
-**Generate details** click invokes `POST /generation/draft` with only `session_id`
-and `message_id`. It returns `{draft: {title, note, tags}, context:
-{previous_exchanges, requested_exchanges, truncated}}`, never a saved entry.
-`GET`/`PUT /generation/settings` reads/writes `{previous_exchanges: 10}` in the
-plugin metadata database; values must be strict integers from 0 through 100.
-All three routes use the native authenticated, profile-bound plugin transport.
-
-The single-column editor places Generate details on the left and the **Context**
-selector on the right of one row, followed by full-width Title, Note and Tags.
-The selector offers exactly 5/10/20/50 (new/unset default 10). Existing presets are
-preserved. Legacy non-preset API values display as 10 without mount-time writes;
-explicit selection persists immediately, and explicit Generate persists the shown
-value before inference. The API retains strict integer 0–100 compatibility.
-Search-window guidance lives in hover/keyboard-focus Previous/Next tooltips,
-including focusable wrappers for disabled pagers: 1000 recent conversations and
-500 recent assistant responses, with truncation reported from the actual response.
-Desktop uses the public SDK Tooltip primitives; Dashboard has no public tooltip export, so its
-adapter supplies semantic hover/focus/Escape behavior without private imports.
-
-### Context boundary
-
-The collector opens native `state.db` read-only through the same guarded source
-adapter. It validates session/profile/hidden status, human-facing source, provenance
-and an exact eligible assistant anchor. Ancestry follows the native resume boundary:
-only compression continuations, stopping at explicit branch/reset edges (including
-inherited markers bound to their original parent), a non-compression parent, or the
-native 100-session bound. Historical parents beyond a reset are not this conversation.
-Consulted foreign, hidden, automated/delegate, malformed or cyclic ancestry still
-fails closed. A pruned/missing parent or exhausted ancestry bound does not fabricate
-history: the verified local segment remains usable only if it contains a readable
-focal user request. A requested earlier-context shortfall is `truncated: true`.
-
-Native indexed `display_order` / binary `display_identity` supplies logical chronology
-and copy deduplication; timestamps are not a sorting key. Native display indices are
-lazy and may be NULL even when the child has been opened. The read-only fallback
-recovers ordinary text user/assistant identities from the native exact
-role/content/timestamp/tool-field key and first physical occurrence, retaining valid
-indexed slots. A later physical copy of the selected answer cannot move the cutoff.
-Missing slots with known identities use the same first-occurrence rule. This does
-not initialize, materialize, migrate or repair the native store.
-
-Unindexed summary/steer/rich-user and tool-calling carriers are not guessed: an
-unsupported required user refuses generation; an earlier unsupported user ends
-context with a truncation disclosure. An unidentified earlier assistant or removal
-tombstone refuses generation because it could invalidate the anchor boundary.
-Malformed non-NULL identities/orders and conflicting logical slots still fail closed.
-Future unindexed bodies are not read even for identity hashing. Only active/compacted
-logical rows at or before the anchor contribute text. Copies prefer the active row,
-except that the focal response preserves the exact selected row. Legacy identity
-reads share the bounded hydration budget with visible-text projection.
-
-These semantics were checked against native `hermes_state_messages.py`
-(`_resume_lineage_ids`, `_reconcile_display_orders`, `_legacy_display_page`) and
-`hermes_state_compression.py` (`_is_compression_child_row`) at `7b46bc10064d`, with
-resident schema version 32. Regression fixtures use native temporary stores with
-mixed NULL indices, long reset histories, pruning, carried copies and future
-removal markers—not only freshly materialized histories.
-
-An earlier exchange is one real user request and its following visible assistant
-messages before the next real user request. The focal exchange includes only its
-preceding real user request and the selected assistant response. Native human
-steers and user text carried by summaries are projected without the surrounding
-machine context. Recognizable memory/plugin injections, automated diagnostics,
-hidden, observed, model-only, system/tool, reasoning and media carriers are excluded.
-Only allowlisted visible text blocks/wrappers and scrubbed plain text survive;
-unknown rich formats and malformed context fences fail closed. Text is
-whitespace-normalized. Native history does not label arbitrary unframed plugin-only
-text parts: those are indistinguishable from additional human paragraphs. The
-adapter cannot infer provenance that the host did not preserve; its exclusion
-covers recognized native carriers, not arbitrary unmarked third-party injections.
-
-Bounds: 4,000 candidate timeline rows; 64 KiB per stored message cell; 4 MiB total
-hydration budget; 256 KiB serialized input. The focal response and user request are
-never silently shortened: missing/oversized required text refuses the request.
-Earlier context may end at a complete-exchange boundary with `truncated: true`;
-the UI shows that disclosure and actual exchange count. Query budgets and safe
-file/schema checks remain those of the source adapter below. Native state is not
-modified, and neither context nor previews are saved to plugin storage or logged
-by this plugin. The model service processes the bounded input normally; provider
-retention policies are outside plugin storage guarantees.
-
-### Native inference and lifetime
-
-Registration uses `ctx.register_auxiliary_task('conversation_bookmarks_details', …)`
-and `ctx.on_unload` with a profile-bound facade. Supported
-`ctx.llm.acomplete_structured` resolves the current profile model/auth; no plugin
-credentials, provider SDK client, tools/agent loop, `side_question`, live-context
-replay or chat injection is used. Task defaults request `reasoning_effort: minimal`
-and native Responses `extra_body.reasoning.effort: minimal`; Hermes owns wire
-shaping, capability clamping and operator task overrides. Current gpt-6-astra maps
-minimal to its lowest supported effort, `low`, as verified on the real wire.
-Normal host retries/fallbacks apply; the plugin adds no retry loop.
-
-One request per profile and four per package/process may run concurrently. The
-whole operation has a 45-second deadline, also passed to the host, and a 1,600-token
-output allowance. Strict local validation rejects extra keys, missing fields,
-wrong types, invalid title/tags and non-text notes. Errors return controlled
-messages, not provider exceptions or raw output. Task registration is conditional:
-older hosts keep manual save support but cannot generate details. The facade must
-have been registered by the native Agent plugin loader in the serving process; a
-cold API-only in-process Dashboard that has only imported the router returns 503
-until native plugin registration runs. The plugin does not force discovery through
-private core imports. The native HTTP test explicitly exercises that host lifecycle.
-
-The shared editor applies validated metadata only to its current draft, preserving
-source references. Edits, selection changes, save, unmount, profile/connection
-changes and host disposal fence late completions. No generation request happens
-on selection or setting changes. Settings persist on blur; loading/error/retry
-states do not prevent manual saving. The user must separately review and save.
-
-## Authenticated API
-
-Native mount: `/api/plugins/conversation-bookmarks`. Authentication, origin protection,
-trusted package admission, and effective enablement belong to the Hermes host.
-
-| Method | Relative path | Result |
-|---|---|---|
-| GET | `/status` | Version and bound profile |
-| GET / PUT | `/generation/settings` | Profile-local previous-exchanges setting (0–100; default 10) |
-| POST | `/generation/draft` | Explicit bounded inference; validated AI draft and context counts; no save |
-| GET | `/sources/sessions` | Recent conversation choices; `q`, `limit`, `offset` |
-| GET | `/sources/sessions/{session_id}/responses` | Visible assistant-response choices for one bound-profile conversation |
-| GET | `/entries` | Search/filter/sort/page using `q`, `tag`, `sort`, `limit`, `offset` |
-| POST | `/entries` | Validated entry; 201 |
-| GET | `/entries/{id}` | Metadata and current `source_status`; 404 if absent |
-| PUT | `/entries/{id}` | Full metadata and current revision; stale writes return 409 |
-| DELETE | `/entries/{id}?revision=N` | Metadata deletion; `source_deleted: false`; stale deletion returns 409 |
-
-Bookmark list results contain `items`, `total`, `limit`, and `offset`. Successful responses use
-`Cache-Control: no-store`. The optional `profile` argument must match the profile already
-bound by the host; it cannot select a filesystem path or grant access to another home.
-
-Create is not idempotent. After an ambiguous response, read/search before retrying; a
-second POST can create a second bookmark. Revision checks prevent stale updates/deletes,
-not duplicate creates. Source checks are point-in-time, not retention locks.
+Native Desktop rechecks availability and calls `host.openSession` for the session/profile. An optional response reference does not promise exact-message scrolling. Dashboard supplies session/resume information rather than inventing a route.
 
 ## Read-only source boundary
 
-`SourceAdapter` opens exactly the bound profile's `state.db` using SQLite `mode=ro` and
-`PRAGMA query_only=ON`. It does not construct a native SessionDB object that might
-initialize, migrate, or repair state.
+`SourceAdapter` opens exactly the bound profile's `state.db` using SQLite `mode=ro` and query-only mode. It does not create a native SessionDB object or migrate source state. Missing, unsafe, or unsupported stores are refused rather than repaired.
 
-Ordinary bookmark validation and availability checks consult identifiers only:
+Ordinary saves and availability checks consult source identifiers and ownership. Explicit chooser requests can read session labels and bounded visible assistant previews. The chooser searches up to 1,000 recent local non-hidden sessions or 500 eligible assistant rows in a selected session. These are recent windows, not full-history search.
 
-```sql
-SELECT profile_name FROM sessions WHERE id = ?;
-SELECT 1 FROM messages WHERE id = ? AND session_id = ?;
-```
+Stored preview cells are bounded to 16 KiB before decoding. Returned previews are at most 350 characters. Supported visible text is projected from native content. Reasoning, tool, media, hidden, observed, and unsupported carriers are not previews. `has_more` describes matches inside the current window; `window.truncated` describes older candidates outside it. Pages can shift as native history changes.
 
-Explicit source chooser reads are a separate boundary:
+Source states are `available`, `session_missing`, `message_missing`, `store_missing`, and `unavailable`. None promises source retention. A source may disappear immediately after validation, and annotations cannot reconstruct it.
 
-- `GET /sources/sessions?limit=30&offset=0&q=` returns
-  `{items: [{id, title, updated_at, source}], has_more, window: {limit, truncated}}`.
-  Session IDs remain strings. Titles come from native `sessions.title`, not prompts.
-  Blank/null titles fall back to `source · session-id` or `Conversation · session-id`.
-- `GET /sources/sessions/{session_id}/responses?limit=30&offset=0&q=` returns
-  `{items: [{id, preview, created_at}], has_more, window: {limit, truncated}}`.
-  IDs are positive JavaScript-safe native message integers, not platform message IDs.
-- Timestamps are finite epoch seconds or `null`; newest-first order has descending
-  IDs as deterministic tie-breakers and null timestamps last. Session recency uses the
-  newest valid start/end/activity/message timestamp, with an indexed per-session message
-  maximum rather than scanning transcript bodies. Pages reflect the live source and can
-  shift when messages arrive or are pruned; there is no retained cross-request snapshot.
-- `limit` defaults to 30 and accepts 1–100. `q` is at most 200 characters. Session
-  offsets accept 0–1,000; response offsets accept 0–500. Invalid bounds/IDs return 422.
-  Search is literal Unicode-casefolded substring matching over session ID/title/source
-  or the returned preview only, never hidden fields or text beyond the preview.
-- Search/paging is limited to the newest **1,000 local non-hidden sessions** or the
-  newest **500 eligible assistant rows** in one session (plus one row to detect a
-  truncated window). Eligible rows must have empty/null `display_kind`, no observation
-  flag, no compressed-summary flag, and a safe positive message ID. Rows with no safe
-  visible text are omitted after this window is selected. `has_more` describes matching
-  items remaining **inside** this window; `window.truncated` describes older candidates
-  outside it. Frontends should label these recent-window searches, not imply global
-  transcript search. No total transcript count is exposed.
-- Only assistant `content` is selected for preview decoding, never prompt/system/tool
-  rows or dedicated reasoning/tool-argument/API-content columns. Native structured
-  content uses the actual `\x00json:` marker. Only known `text`/`output_text` blocks
-  and assistant message wrappers are projected; reasoning/thought/analysis-channel,
-  tool and media blocks are ignored. Unknown/malformed formats fail closed. Tagged
-  private carriers in plain content are conservatively removed, as are data URIs.
-- Each stored content cell is limited to **16 KiB of bytes before Python decoding**;
-  oversized cells (including media-rich cells), binary cells and excessively nested
-  structures yield no preview. NUL-prefixed content uses a BLOB byte-length check, not
-  SQLite's NUL-terminating text length. Visible previews are whitespace-normalized and
-  capped at **350 characters**, including an ellipsis when truncated. This deliberately
-  omits some large or unsupported responses rather than exposing arbitrary payloads.
-- Responses for a missing, hidden or explicitly foreign-profile session uniformly
-  return 404. Missing/unsafe stores, unsupported schemas and exhausted query budgets
-  return a generic 503, not a misleading empty list or a filesystem/schema disclosure.
-  Chooser reads do not initialize even the plugin's metadata database.
+## Manual AI draft
 
-Missing stores are not created. Symlinked stores/ancestors and hard-linked stores are
-refused. Choosers additionally reject linked/non-regular WAL, SHM and journal sidecars,
-reject views in place of native tables, use `trusted_schema=OFF`, and impose a query
-progress budget (about two million SQLite VM instructions or one second, checked every
-1,000 instructions) plus a one-second lock timeout. They use a short read transaction
-for ownership and content selection. No immutable SQLite mode is used: committed live
-WAL rows stay visible. Main DB and WAL content integrity are tested; SQLite may use its
-normal shared-memory read locks. This is not protection against concurrent filesystem
-replacement by another process with the same account's access.
+Editor **Generate details** uses `POST /generation/draft` for a new response bookmark. It sends the selected response, its preceding real user request, and bounded earlier eligible exchanges through `ctx.llm.acomplete_structured` with task `conversation_bookmarks_details`. It excludes later text. It returns a draft, never a saved entry.
 
-The required native schema includes `sessions.id`, `sessions.profile_name`, `messages.id`,
-and `messages.session_id` for legacy validation. Choosers also require the native title,
-source, start/end/activity/hidden fields for session listing and role/content/timestamp/
-display-kind/observed/compressed-summary fields for response listing. Missing required
-columns fail closed; the plugin never migrates native state. A null/empty legacy
-profile label is accepted only inside the
-already-bound profile's database. An explicitly foreign label is refused. Missing
-`profile_name` is not treated as permission to ignore ownership.
+UI **Context** offers 5, 10, 20, or 50 previous exchanges, default 10. The compatibility API accepts strict integers 0–100. Generation reports actual/requested context and truncation. Required focal text is not silently shortened. The collector follows eligible compression continuity within its bounded native-history contract; it does not invent missing ancestry or initialize display indices.
 
-Source statuses are `available`, `session_missing`, `message_missing`, `store_missing`,
-and `unavailable`. Deleted sources leave bookmark metadata intact. Editing annotations
-for a missing source is allowed; changing its reference requires validation again.
-Chooser filtering does not tighten legacy bookmark validation: existing explicit
-non-assistant message references still work, and old/pruned references stay editable.
-Native pruning can occur immediately after validation, so a bookmark never promises
-source resurrection or transcript retention.
+Limits include 4,000 candidate timeline rows, 64 KiB per generation message cell, and 256 KiB serialized input. Native model access has a 45-second deadline and concurrency limits. Unsupported source formats, invalid output, timeout, or plugin/profile changes reject the draft. Recognized private carriers are excluded, but the adapter cannot infer provenance absent from native history, such as arbitrary unmarked third-party injections.
 
-## Persistence and context lifetime
+Generation replaces the form's title, note, and tags. Newer edits and changed selections fence a late completion. Selection or settings changes do not themselves trigger inference. The current-agent slash handoff uses the agent's existing context instead; its context boundary is not the editor's selected-response cutoff.
 
-Metadata lives at:
+## Authenticated HTTP API
 
-```text
-<bound HERMES_HOME>/plugin-data/conversation-bookmarks/bookmarks.sqlite3
-```
+Mount prefix: `/api/plugins/conversation-bookmarks`. The host owns authentication and enablement. A `profile` query parameter must match the already-bound profile and cannot authorize another filesystem home.
 
-The service resolves `get_hermes_home()` for each request, not once at import. It uses
-short-lived SQLite connections, transactional writes, a 10-second busy timeout, and
-optimistic revision checks. Linked metadata directories/files are refused. Package
-removal does not erase this catalog. Filesystem tampering by software running as the
-same account is outside the remote-client boundary.
+| Method | Relative route | Contract |
+| --- | --- | --- |
+| GET | `/status` | Version and bound profile. |
+| GET | `/entries` | Metadata search with `q`, `tag`, `sort`, `limit`, and `offset`. |
+| POST | `/entries` | Validate source and create annotations. |
+| GET / PUT | `/entries/{id}` | Read, or replace complete metadata using current revision. |
+| DELETE | `/entries/{id}?revision=N` | Remove one annotation record only. |
+| POST | `/entries/remove` | All-or-nothing removal of explicit ID/revision pairs, maximum 100. |
+| GET / PUT | `/settings` | Strict booleans `show_notes` and `show_source_status`, default true. |
+| GET | `/sources/sessions` | Bounded recent conversation choices. |
+| GET | `/sources/sessions/{session_id}/responses` | Bounded eligible assistant previews. |
+| GET / PUT | `/generation/settings` | Strict `previous_exchanges` value, 0–100. |
+| POST | `/generation/draft` | Validated metadata draft and context counts; no save. |
 
-Desktop uses `ctx.rest` and fences requests/completions against profile, connection,
-and disposal. Dashboard captures the native loader's profile and refuses work after
-its script retires. Shared UI action generations reject stale read/detail completions.
-A write already dispatched may finish in its original context; unmounting does not undo
-it, but must not issue verification through a newly selected host.
+Strict revisions are positive JavaScript-safe integers. A stale update/delete returns 409. UI clients fence late reads and completions against profile, connection, and disposal. A mutation already dispatched may finish in its original context; leaving the view does not roll it back.
 
-Desktop's open action rechecks availability, then calls
-`host.openSession(id, { profile, expectHistory: true })`. This opens a conversation—not
-a claimed exact-message anchor. Dashboard offers copy/resume rather than guessing a
-route. Clipboard access uses the host OS bridge on Desktop and browser clipboard support
-on Dashboard, with a manual-copy fallback.
+## Optional Telegram panel
 
-## Development and tests
+Native `/bookmarks` panels require host handler support and the separate profile-local `plugin-data/conversation-bookmarks/telegram-owners.json`. It is an array of decimal user-ID strings, maximum 50. Missing or invalid policy denies native panel access before catalog/source reads. The policy is not a grant for all command/tool paths.
 
-Use a separate Python development environment with FastAPI, Pydantic 2, and the test/host
-dependencies. Do not ad-hoc install packages into a managed Hermes environment.
+Panels expire after ten minutes and bind to owner, chat/topic, message, session, profile, and application lifecycle. **Add this conversation** previews the exact invoking source's title. **Save conversation reference** explicitly saves that title with empty note/tags and no model call. An untitled source uses **Saved conversation**. Cancel does not save. Reset, deletion, unload, stale buttons, and changed ownership can invalidate a panel. Handler replacement and unload detach the prior application callback; delivery rechecks expiry, profile binding, and lifecycle before publishing actions. Telegram browse without native application support still checks owner/session before returning text. A failed confirmation is not proof of rollback.
+
+## Compatibility and verification
+
+Run checks in a disposable development checkout with separate dependencies:
 
 ```sh
 npm ci --ignore-scripts
@@ -431,136 +130,4 @@ export HERMES_SOURCE=/path/to/hermes-agent
 bash scripts/verify.sh
 ```
 
-The runner executes unit tests, native HTTP/auth checks, Doctor and catalog validation,
-builds, and both native-loader browser suites. Fictional source banks and HTTP fixtures
-are outside the repository and removed on exit; public-safe screenshots are retained.
-Native server lifespan workers/bootstrap are disabled in HTTP fixtures.
-
-Generation checks on a host exposing `ctx.llm` and task registration:
-
-```sh
-HERMES_DISABLE_LAZY_INSTALLS=1 "$PYTHON" tests/native_generation.py
-# Full paired real-loader matrix (requires the compatible local Shelf checkout):
-PYTHON="$PYTHON" npm run test:saved
-# Explicit opt-in paid request; fictional moon-orchard input only:
-"$PYTHON" tests/real_generation_smoke.py
-```
-
-`test_generation.py` is included in unittest discovery. It covers exact 0/20/100
-context, compaction copies, private carriers, future exclusion, complete exchanges,
-profile/settings isolation, native-source byte integrity, bounds, malformed output,
-timeout/error, concurrency and unload. Native generation proves authenticated
-HTTP → actual plugin registration → native model/wire shaping with a provider
-transport double. The separate real smoke verifies the current profile route and
-actual wire effort/output, without reading native transcripts or saving a bookmark.
-Browser generation cases use real controls/adapters and a held HTTP response to
-exercise edit/selection/unmount/profile/connection fences; they are not live model
-or Electron-shell acceptance.
-
-## Compatibility and verification
-
-### Source chooser backend verification (unreleased)
-
-The fictional HTTP chooser suite covers the two specified route contracts, limits,
-stable pagination, literal search, null titles/timestamps, profile isolation, hidden
-and mixed-role rows, native rich content, malformed/oversized payloads, linked stores
-and sidecars, missing schemas, source-byte integrity, live WAL visibility, and legacy
-reference/pruned-source editing. A 300,000-message fixture verifies that session
-recency remains usable within the query budget without scanning all message rows.
-`tests/native_probe.py` additionally exercises both routes through the actual host
-loader/authentication gate, verifies unauthenticated 401, authenticated preview
-readback, native profile binding, and disabled-plugin 404. These are disposable banks,
-not production transcript reads. Browser/Electron chooser interaction and deployed
-client acceptance are separate gates; no UI bundle or rollout is part of this backend work.
-
-### Earlier release baselines
-
-The initial complete runner and native installation lifecycle passed against **Hermes
-v0.22.5**, official commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`, as well as the
-development baseline `bd3cbe91a9`. The CI workflow pins the official release. This does
-not establish an older minimum version.
-
-The separate `tests/install_lifecycle.py` requires a disposable host checkout beneath
-`TMPDIR`; native package preparation can modify that checkout, so never aim it at a
-live installation. It exercises actual install, enable, disable, update while disabled,
-and removal. The real Desktop reconciliation implementation copies, updates, and prunes
-the UI package. Bookmark SQLite and the fictional native source database are checked
-byte-identical across the lifecycle. The workflow contains the isolated setup.
-
-### Tag-casing correction verification (unreleased)
-
-After the supplied-tag casing correction, the installed-host run passed **41
-unittest tests**, `tests/native_probe.py`, and `tests/native_contract.py` (Doctor:
-4 tools, zero findings; catalog: 16 checks, zero warnings). New regressions preserve
-`OpsCase` / `Keep-Tag` through direct slash saves and handoff-to-fixture completion,
-and cover API create/update/readback, legacy lowercase filters, Unicode casefold,
-case-insensitive deduplication, literal commas, and SQL-like tag input. The same full
-unittest, native probe and contract checks also passed against an isolated archive
-of official Hermes v0.22.5 after the correction.
-
-A separate real native `AIAgent` run passed three fictional cases for this plugin:
-all metadata omitted; exact title and mixed-case tags supplied; exact description
-supplied. Each generated only missing metadata, saved once to actual plugin SQLite,
-searched the stored entry, and returned its title, tags and description. Independent
-readback confirmed supplied values and source references; source hashes stayed
-unchanged across the runs.
-
-That test used a capture callback to obtain the command handoff and a real model
-for subsequent agent/tool execution. It is not live Telegram delivery or a
-browser/Electron test. All fixture homes were removed; production remains unchanged.
-
-### Slash-command verification (unreleased)
-
-Verification passed on both the installed development host `bd3cbe91a90` and official
-v0.22.5 (`bf0203a794a07aac3ff764972ab9087baa4e4f4e`): all 38 tests under
-`python -m unittest discover -s tests -p 'test_*.py' -v`, `tests/native_probe.py`, and
-`tests/native_contract.py`. Doctor registered four tools with zero findings; catalog
-validation passed all 16 checks with zero warnings. `git diff --check` also passed.
-The official host was a temporary archive removed after testing; CI pins are unchanged.
-
-The earlier deterministic command baseline passed 32 tests. Agent-assisted metadata
-completion extends that baseline to **38 unittest tests**: 22 existing tests and 16
-public command regressions. The red/green sequence first demonstrated that bare saves
-still showed help and omitted fields were saved prematurely, then implemented native
-handoff and quoted description support. Coverage includes every omitted-field subset,
-explicit empty description, supplied overrides, limits, JSON-framed hostile metadata,
-help, missing sources/context, denied/unsupported injection, deterministic readback,
-native gateway context propagation, and profile isolation.
-
-`tests/native_probe.py` exercises the real loader, dispatcher, `PluginContext.inject_message`,
-profile-owned default-off consent, separate profile targets, registered tool dispatch,
-and authenticated HTTP readback. Its published gateway receivers and later completed
-metadata are explicitly fictional fixtures, **not model output**. Acceptance alone is
-checked to create no bookmark; native source bytes remain unchanged. These tests do
-not prove a live model obeys the prompt, platform delivery succeeds, or arbitrary
-malicious metadata cannot influence an agent.
-
-All banks and host archives are disposable under `TMPDIR`. No production enablement,
-config change, source edits, install, publishing, or frontend bundle changes are part
-of this work. Browser/Electron behavior is not re-certified by command tests.
-
-Verified release runner (0.1.0 baseline):
-
-- 22 unit tests covering ownership, strict inputs, source pruning, read-only source
-  bytes, concurrent profile contexts, revision conflicts, and native tools.
-- Native unauthenticated 401, authenticated create/readback, source-file denial,
-  generated bundle serving, and already-mounted disabled-plugin 404.
-- Doctor: four tools, zero findings. Catalog validation: 16 checks, zero warnings.
-- Real Dashboard and Desktop native loaders at 360/768/1440 pixels, including CRUD,
-  search/filter/sort, escaped text, keyboard dialogs, error/retry, conflict draft
-  retention, source pruning, and stale profile/connection/disposal callbacks.
-- No horizontal overflow; visible controls at least 44 pixels; measured muted-card
-  contrast 4.78:1 light and 7.36:1 dark in the tested palettes.
-
-The Desktop browser harness uses the actual runtime loader, React, HTTP, and SQLite,
-but doubles SDK state/IPC/UI boundaries. It verifies the session-open invocation, not
-actual Electron history hydration. Full Electron, OS clipboard behavior, Windows/macOS,
-remote OAuth, and end-to-end out-of-process secondary-profile transport are not proved
-by these tests. Context binding tests are separate from that transport boundary.
-
-## Deliberate exclusions
-
-No automatic excerpts, observer hooks, independent model client, analytics, cloud sync, memory writes,
-source database edits, import/export, bulk actions, source retention changes, or invented
-message-anchor navigation. The narrow source adapter is the compatibility boundary to
-revisit if Hermes changes its session schema or adds a suitable public read-only API.
+The source runner includes unit, native fixture, command, Telegram capture, build, and browser checks. Fixture tests do not establish live messaging, Electron history hydration, remote transport, or clean installation. Source inspection is not a test receipt. A new bundle, installed package, and native workflow each need separate evidence against the exact release. No current pass count or universal backend/client support is asserted here.

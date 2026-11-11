@@ -124,7 +124,7 @@ def main():
             home = root/'home'
             package = home/'plugins/conversation-bookmarks'
             package.mkdir(parents=True)
-            for name in ('plugin.yaml', '__init__.py'):
+            for name in ('plugin.yaml', '__init__.py', 'telegram_bookmarks.py'):
                 shutil.copy2(ROOT/name, package/name)
             for name in ('dashboard', 'desktop'):
                 shutil.copytree(ROOT/name, package/name, ignore=shutil.ignore_patterns('__pycache__'))

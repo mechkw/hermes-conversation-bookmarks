@@ -19,7 +19,10 @@ with sqlite3.connect(sys.argv[1]) as db:
  db.execute("INSERT OR REPLACE INTO sessions(id,profile_name,title,source,last_activity_at) VALUES('pruned-session','default','Prunable source','cli',1)")
  db.execute("INSERT OR REPLACE INTO messages(id,session_id,role,content,timestamp) VALUES(44,'pruned-session','assistant','Old assistant response',1)")
  `);
- return {prune(){run(`import sqlite3,sys
+ return {snapshot(){return run(`import sqlite3,sys,json
+with sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True) as db:
+ print(json.dumps({table:db.execute('SELECT * FROM '+table+' ORDER BY id').fetchall() for table in ('sessions','messages')},ensure_ascii=False))
+`).toString();},prune(){run(`import sqlite3,sys
 with sqlite3.connect(sys.argv[1]) as db:
  db.execute("DELETE FROM messages WHERE session_id='pruned-session'")
  db.execute("DELETE FROM sessions WHERE id='pruned-session'")

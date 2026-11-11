@@ -168,6 +168,30 @@ class EntryInput(BaseModel):
         return result
 
 
+class BrowseSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    show_notes: bool = True
+    show_source_status: bool = True
+
+
+class BulkReference(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    revision: int = Field(ge=1, le=MAX_REVISION)
+
+
+class BulkRemove(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    entries: list[BulkReference] = Field(min_length=1, max_length=100)
+
+    @field_validator("entries")
+    @classmethod
+    def unique(cls, entries):
+        if len({entry.id for entry in entries}) != len(entries):
+            raise ValueError("Select each bookmark once")
+        return entries
+
+
 class GenerationSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     previous_exchanges: int = Field(default=10, ge=0, le=100)
@@ -968,10 +992,15 @@ class Store:
             rows = conn.execute("SELECT * FROM entries" + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", [*params,limit,offset]).fetchall()
         return {"items":[self.decode(row) for row in rows],"total":total,"limit":limit,"offset":offset}
 
-    def create(self, entry):
-        self.source.require(entry.session_id, entry.message_id)
+    def create(self, entry, authorize_commit=None):
+        if authorize_commit is None:
+            self.source.require(entry.session_id, entry.message_id)
         entry_id, now = uuid.uuid4().hex, time.time()
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if authorize_commit is not None:
+                authorize_commit()
+                self.source.require(entry.session_id, entry.message_id)
             conn.execute("INSERT INTO entries VALUES (?,?,?,?,1)", (entry_id,entry.model_dump_json(),now,now))
         return self.get(entry_id)
 
@@ -985,6 +1014,22 @@ class Store:
         if not changed:
             raise HTTPException(409,"Bookmark changed elsewhere. Refresh before saving; your draft has not been applied.")
         return self.get(entry_id)
+
+    def remove_many(self, request):
+        # One reservation and all-or-nothing revision checks. Never query or
+        # delete native sessions/messages, including for unavailable sources.
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            for entry in request.entries:
+                row = conn.execute("SELECT revision FROM entries WHERE id=?", (entry.id,)).fetchone()
+                if row is None or row[0] != entry.revision:
+                    raise HTTPException(409, "A selected bookmark changed or was removed. Refresh and select again; nothing was removed.")
+            for entry in request.entries:
+                conn.execute("DELETE FROM entries WHERE id=? AND revision=?", (entry.id, entry.revision))
+            ids = [entry.id for entry in request.entries]
+            if conn.execute("SELECT 1 FROM entries WHERE id IN (" + ','.join('?' for _ in ids) + ")", ids).fetchone():
+                raise HTTPException(503, "Bookmark removal could not be verified")
+        return {"deleted": ids, "source_deleted": False}
 
     def delete(self, entry_id, revision):
         self.get(entry_id)
@@ -1104,6 +1149,28 @@ def status(store: Store = Depends(request_store)):
 @router.get("/entries")
 def entries(q: str = Query("",max_length=200), tag: str = Query("",max_length=40), sort: Literal["newest","oldest","title"] = "newest", limit: int = Query(50,ge=1,le=100), offset: int = Query(0,ge=0,le=1000000), store: Store = Depends(request_store)):
     return store.search(q,tag,sort,limit,offset)
+
+
+@router.get("/settings")
+def browse_settings(store: Store = Depends(request_store)):
+    defaults = BrowseSettings().model_dump()
+    with store.connect() as conn:
+        for key, value in conn.execute("SELECT key,value FROM settings WHERE key IN ('show_notes','show_source_status')"):
+            defaults[key] = bool(value)
+    return defaults
+
+
+@router.put("/settings")
+def save_browse_settings(settings: BrowseSettings, store: Store = Depends(request_store)):
+    with store.connect() as conn:
+        conn.executemany("INSERT INTO settings VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                         [(key, int(value)) for key, value in settings.model_dump().items()])
+    return browse_settings(store)
+
+
+@router.post("/entries/remove")
+def remove_entries(request: BulkRemove, store: Store = Depends(request_store)):
+    return store.remove_many(request)
 
 
 @router.post("/entries",status_code=201)

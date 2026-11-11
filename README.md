@@ -1,191 +1,138 @@
-<p align="center"><img src="docs/assets/icon.png" width="80" alt="Conversation Bookmarks icon"></p>
+# Conversation Bookmarks
 
-<h1 align="center">Conversation Bookmarks</h1>
-<p align="center"><strong>Come back to the part that mattered.</strong></p>
-<p align="center">Save a useful conversation reference, give it a name, and find it again in Hermes Desktop or the web Dashboard.</p>
+**Come back to the part that mattered.**
 
-<p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#good-conversations-deserve-good-signposts">Why bookmarks</a> ·
-  <a href="docs/OPERATIONS.md">Usage & troubleshooting</a> ·
-  <a href="docs/TECHNICAL.md">Technical guide</a>
-</p>
+Contest candidate. [Verified workflows and known issues](docs/RELEASE_STATUS.md).
 
-![Conversation Bookmarks — classical dialogue marked for return, with oversized cream-and-gold lettering and digital halftone texture](docs/assets/hero.webp)
+Give a useful Hermes conversation or assistant response a title, a note, and a way back. Find the decision you made, the explanation that clicked, or the thread you want to continue.
 
-Somewhere in that conversation is the decision you agreed on, the explanation that
-finally clicked, or the answer you will need again. A bookmark gives it a place to live
-without turning the whole chat into another document.
+[Install](docs/INSTALLATION.md) · [Usage guide](docs/USAGE.md) · [Commands](docs/COMMANDS.md) · [Security](SECURITY.md)
 
-**A name. A note. A way back.** No automatic transcript collector or new account.
-In manual Add, **Generate details** makes an explicit, bounded model request and fills
-an AI draft for review—never an automatic save. `/bookmark` with omitted metadata
-instead asks your current Hermes agent to complete and save it.
+![Conversation Bookmarks banner in the Signal Cut art style](docs/assets/hero.webp)
 
-## Quick start
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mark-on-dark.png">
+  <img src="docs/assets/mark-on-light.png" alt="Conversation Bookmarks logo: a ribbon marking a speech bubble" width="104" height="104">
+</picture>
+
+## Watch it work
+
+[Conversation Bookmarks launch film · 36 seconds](docs/assets/launch.mp4) · [Both plugins together · 42 seconds](docs/assets/saved-together.mp4)
+
+Real dark-mode native screens, fictional Northstar notes. The films show saved references and the source-return control, not a transcript backup or a continuous recording.
+
+## Save the reference, add the reason
+
+A bookmark stores a conversation reference and your annotations. You can bookmark an entire conversation or identify an assistant response within it.
+
+Name the bookmark for what you will look for later. “Friday launch decision” is more useful than “Interesting chat.” Add a note for the detail you do not want to reconstruct next time.
+
+Use it for:
+
+- The decision and reasoning behind a project change.
+- An explanation you want to revisit instead of asking again.
+- A conversation you intend to continue after switching tasks.
+- A particular assistant response worth keeping track of.
+
+Bookmarks does not copy the transcript, infer persistent memory, or preserve attached files. It keeps your place, not a second conversation archive.
+
+## Install
 
 ### Native Hermes Desktop
 
-In the installed app, open **Capabilities → Plugins → Install from Git** and enter:
+Open **Capabilities → Plugins → Install from Git** and enter:
 
 ```text
 https://github.com/mechkw/hermes-conversation-bookmarks
 ```
 
-Select the intended backend/profile, review the normal installation consent, and
-verify that **both Agent and Desktop are enabled**. Open **Saved → Bookmarks**.
-The Desktop UI lives on the app computer; the Agent half and data live on the
-selected backend. A server-only install followed by Rescan is not enough for a
-remote client. [Existing backend or “unavailable (remote backend)”? →](docs/OPERATIONS.md#remote-desktop-setups)
+Choose the intended backend and profile, review installation permissions, and enable both the **Agent** and **Desktop** halves. Open **Saved → Bookmarks**.
 
-### Web Dashboard or backend-only installation
+### Backend or web Dashboard
 
-Run on the backend that owns your data:
+Run on the backend that owns your Hermes profile:
 
 ```sh
 hermes plugins install mechkw/hermes-conversation-bookmarks --enable
 hermes plugins list
 ```
 
-Refresh the authenticated **Dashboard** after its plugin routes are loaded; if
-needed, restart only that Dashboard server. Open **Saved → Bookmarks**. The
-Dashboard also adapts to phones and tablets; no separate mobile app is required.
+Use the installer's activation result to check whether anything still needs a reload. Installing the backend alone does not install a native Desktop UI on another computer.
 
-**Browser-hosted Desktop is a different host from the web Dashboard.** The
-currently inspected Hermes browser bridge does not load these external Desktop
-plugins. Use native Desktop or the Dashboard for the Saved panel; backend tools
-can still work without that panel.
+[Full installation guide](docs/INSTALLATION.md), including remote backends and host compatibility.
 
-If your Desktop app connects to a different computer, install the backend there and
-the Desktop half on the app computer. [Remote setup explained →](docs/OPERATIONS.md)
+## Save your first bookmark
 
-## Good conversations deserve good signposts
+In **Saved → Bookmarks**, choose **Save bookmark**. You can also open the collection from native Desktop's **Plus → Bookmarks** entry:
 
-### Keep the decision
+1. Choose a conversation by title and date.
+2. Leave **Entire conversation** selected, or choose an assistant response.
+3. Enter a title, optional note, and tags.
+4. Select **Save bookmark**.
 
-“The launch stays on Friday, with the smaller scope.” Name the bookmark for the decision
-and add the detail you will want when you return.
+No session IDs to copy for the normal chooser workflow.
 
-### Keep the explanation
+<img src="docs/assets/dark-add-bookmark.png" alt="Dark-mode bookmark form with the fictional Northstar conversation selected and annotations ready for an explicit Save bookmark" width="520">
 
-That unusually clear answer about a tricky topic deserves more than “I think it was in
-last Tuesday's chat.” Give it a useful title and a tag you will remember.
+*Fictional Northstar demonstration. The details are ready for review; the bookmark has not yet been saved.*
 
-### Keep the thread
+For a selected response, **Generate details** drafts a title, note, and tags using your configured model. Review the draft before saving. Generation is optional and never saves the bookmark by itself.
 
-Return to the source conversation instead of asking Hermes to recreate an answer from
-a vague description. A bookmark is an explicit reference, not a guess about which chat
-you meant.
-
-## See your saved places
-
-![Conversation Bookmarks in the Dashboard with fictional entries](docs/assets/dashboard.png)
-
-<details>
-<summary><strong>Desktop and a phone-sized Dashboard</strong></summary>
-
-![Conversation Bookmarks rendered through the native Desktop loader](docs/assets/desktop.png)
-
-<img src="docs/assets/mobile.png" width="360" alt="Conversation Bookmarks at a mobile Dashboard width">
-
-These are actual plugin views with fictional entries. [Verification scope →](docs/TECHNICAL.md#compatibility-and-verification)
-
-</details>
-
-## Save it, then find it
-
-Save the current conversation directly in Telegram or another context-aware Hermes chat:
+From a current Hermes conversation, you can also enter:
 
 ```text
-/bookmark
-/bookmark Approved plugin art direction #branding, plugins
-/bookmark Approved plugin art direction #branding, plugins --description "Chosen visual direction"
-/bookmark help
+/bookmark Friday launch decision #launch, planning --description "Friday stays; scope is reduced."
 ```
 
-Omit any **title, tags, or description** and your current Hermes agent generates only
-what is missing, saves, reads it back, and briefly reports the saved/generated details.
-Supplied details are preserved. Tags keep their first spelling/case after boundary trimming
-and case-insensitive deduplication; tag filtering remains case-insensitive.
-Description is stored in the existing **note** field. Supplying all three saves directly,
-without an agent turn. Bare `/bookmark` requests a save; `/bookmark help` shows usage.
+Supplying title, tags, and description saves directly. Omitted fields ask the current Hermes agent to complete them, subject to host support and explicit handoff permission. Bare `/bookmark` keeps its original meaning: **save the current conversation**, not open a browsing menu.
 
-Gateway/TUI handoff requires explicit per-plugin consent:
-`plugins.entries.conversation-bookmarks.allow_gateway_injection: true`.
-The plugin never enables this itself. [Consent and troubleshooting →](docs/OPERATIONS.md#current-agent-handoff-consent)
+Browse from chat with `/bookmarks` or `/bookmark browse`. Use `/bookmarks browse launch` to search saved annotations. Both command names support explicit `add` and `help` forms. Configured Telegram connections offer a native bookmark panel with a separate confirmation before saving a conversation reference.
 
-The source is the actual current native session, never a guessed conversation. Titles
-need no quotes. A whitespace-delimited `#` starts comma-separated tags; `C#` stays
-literal. Use the tool/page for literal commas inside tags or reserved syntax in titles.
+[Command syntax, Telegram panels, and assisted-save setup](docs/COMMANDS.md).
 
-Or ask Hermes:
+## Browse without losing your place
 
-> “Bookmark this conversation as ‘Launch decision,’ tagged website and launch. Note that
-> we agreed on Friday with the reduced scope.”
+Search saved titles, notes, and tags. Filter by an exact tag, then sort by newest saved, oldest saved, or title.
 
-The save tool uses the session ID supplied by its actual invocation, or asks for an
-explicit reference when that context is missing. In **Saved → Bookmarks**, choose
-**Save bookmark**, use **Choose a conversation** to pick a recent conversation by title and date, then optionally
-choose a **Response** from its recent assistant replies. Search the response previews
-to find the answer you meant, or leave **Entire conversation** selected. No IDs to copy.
+Choose a bookmark title to inspect its note, tags, source status, and resume information beside the collection. Checkboxes select bookmarks for removal; they do not open the inspector. Page selection is labeled by scope, and selections can span pages.
 
-For a selected response, click **Generate details** to draft Title, Note and Tags.
-**Context** offers 5, 10, 20 or 50 previous exchanges (default **10**), saved for this
-profile when you select a value. Existing preset choices are preserved.
-The request includes the selected reply, its preceding real user request and up to
-that many earlier exchanges—nothing after the reply. Review or edit the draft, then
-click **Save bookmark**. Entire-conversation bookmarks can still be written manually.
+![Dark-mode Bookmarks collection with the fictional Northstar bookmark checked and its note and tags visible in the adjacent inspector](docs/assets/dark-bookmarks.png)
 
-Search titles, notes, and tags; filter by tag; sort by newest, oldest, or title. Edit the
-annotations without rewriting the conversation. Revision checks prevent silent overwrites.
+*One bookmark selected for metadata removal, with its source still available. Inspection and checkbox selection are separate actions.*
 
-- **Desktop:** Open conversation returns to the source session through Hermes's native
-  interface. Message references do not promise an exact-message jump.
-- **Dashboard:** copy the source ID or profile-qualified resume command. No guessed links.
-- **Source deleted?** Your annotation stays, with a visible unavailable-source status.
+Use **Open conversation** in native Desktop to resume an available source. A response reference identifies what you saved, but opening resumes the conversation; it does not promise to scroll to that exact response. The web Dashboard offers the source ID and a profile-qualified terminal resume command.
 
-The native tools are `conversation_bookmark_save`, `conversation_bookmark_search`,
-`conversation_bookmark_update`, and `conversation_bookmark_delete`.
-[Structured examples and source rules →](docs/TECHNICAL.md)
+## Your annotations survive a missing source
 
-## Saved for you—not silently added to memory
+If a source conversation or response is pruned or removed, the bookmark remains with an unavailable-source status. You can still edit its title, note, and tags, retain the old reference, or remove the bookmark.
 
-Bookmarks are a reading and organization tool. Saving a bookmark does not teach Hermes
-a fact, inject it into future prompts, or start a background summarization job.
+Bookmarks cannot restore the missing transcript. Removing one or several bookmarks deletes only their metadata, never the original conversations or messages.
 
-The plugin keeps its own metadata. Native conversations remain owned by Hermes.
-The conversation/response chooser reads recent session details and short assistant-reply
-previews on demand from the current profile. Those previews are not stored in your
-bookmark or automatically added to its note. Only clicking Generate details sends
-bounded visible context through Hermes’s configured model service; the resulting AI
-draft is stored only if you save it. Removing a bookmark does not delete a
-conversation, message, or memory.
+Revision checks reject stale edits and removals instead of silently overwriting a newer change. [Edit, remove, and handle missing sources](docs/USAGE.md#edit-or-remove-bookmarks).
 
-A bookmark is also **not a transcript backup**. If a source conversation is deleted or
-pruned, a reference cannot make that conversation reappear. [Read the source and retention
-rules](docs/OPERATIONS.md).
+## Privacy and generation
 
-## A small addition, not a different Hermes
+The bookmark catalog is local to the selected Hermes **backend profile**. On a remote setup, that means the server that owns the profile.
 
-Conversation Bookmarks contributes its own tools and full-page views. Your normal chat,
-composer, and replies stay as they are. Desktop and Dashboard use their native plugin
-interfaces, with a shared backend and profile-local storage.
+- Saving is deliberate. There is no automatic capture or plugin analytics service.
+- Collection search covers bookmark annotations, not full conversation text.
+- Source choosers read bounded conversation metadata and assistant-response previews on request.
+- **Generate details** sends the selected response and bounded preceding context through Hermes's configured provider. Later conversation content is excluded.
+- An assisted slash-command save uses the current agent's context. It is a different workflow from the editor's draft generation.
 
-Hermes is our choice for the best agent platform: capable enough to do the work, open
-enough to make the small everyday details better. This is one of those details.
+Do not put secrets in bookmark titles, notes, or tags. This is not an encrypted vault or transcript backup. [Storage and privacy details](docs/USAGE.md#storage-and-privacy).
 
-## Command discovery
+## The conversation and the work
 
-`/bookmark help` shows full syntax. Native Telegram menus use the plugin registry,
-but menu priority may be needed to survive the host cap. On official Hermes v0.22.5,
-global gateway `/help` and `/commands` omit plugin commands entirely; registering
-argument hints cannot fix that host gap. [Menu setup, syntax and verified limitations →](docs/COMMANDS.md)
+Use [Delivery Shelf](https://github.com/mechkw/hermes-delivery-shelf) for the report, images, or other files a conversation produced. Use Bookmarks for the conversation or response behind them.
 
-## Go deeper
+Either plugin works alone. With both installed, **Saved** presents **Bookmarks** and **Deliverables** together while each plugin keeps its own backend and storage.
 
-- [Everyday usage, remote setup, retention, and troubleshooting](docs/OPERATIONS.md)
-- [API, architecture, compatibility, and testing](docs/TECHNICAL.md)
-- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
-- Companion project: [Delivery Shelf](https://github.com/mechkw/hermes-delivery-shelf)—for the outputs you want to keep.
+## Help and project links
 
-An independent community plugin. MIT licensed. Created by [Ken Watts](https://github.com/mechkw).
+- [Usage guide](docs/USAGE.md), [command reference](docs/COMMANDS.md), and [installation](docs/INSTALLATION.md).
+- [Technical reference](docs/TECHNICAL.md), [changelog](CHANGELOG.md), and [contributing](CONTRIBUTING.md).
+- [Report a bug](https://github.com/mechkw/hermes-conversation-bookmarks/issues). Remove private conversation text and identifiers from reports.
+- Report vulnerabilities privately using the channel in [SECURITY.md](SECURITY.md). If GitHub private reporting is unavailable, email **repobugs@virtuedev.com**. Do not post a vulnerability publicly.
+
+An independent community plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/docs/). [MIT license](LICENSE).

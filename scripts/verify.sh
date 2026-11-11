@@ -12,6 +12,7 @@ mkdir -p "$TMPDIR"
 "${PYTHON:-python}" -m unittest discover -s tests -p 'test_*.py' -v
 "${PYTHON:-python}" tests/native_probe.py
 "${PYTHON:-python}" tests/native_contract.py
+"${PYTHON:-python}" tests/native_telegram.py
 "${PYTHON:-python}" tests/native_command_discovery.py
 npm run build
 npm run test:browser

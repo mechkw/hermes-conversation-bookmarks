@@ -1,316 +1,91 @@
-# Save a place. Find your way back.
+# Operate Conversation Bookmarks
 
-[← README](../README.md) · [Technical guide](TECHNICAL.md)
+[README](../README.md) · [Installation](INSTALLATION.md) · [Usage](USAGE.md) · [Technical reference](TECHNICAL.md)
 
 ## Install and open
 
-```sh
-hermes plugins install mechkw/hermes-conversation-bookmarks --enable
-hermes plugins list
-```
+Follow [Installation](INSTALLATION.md) for native Desktop, web Dashboard, and remote pairing. Check the backend and profile, then open **Saved → Bookmarks**. Native **Plus → Bookmarks** opens browsing, not an automatic save. Browser-hosted Desktop is not the web Dashboard.
 
-The repository name is `hermes-conversation-bookmarks`; the installed plugin ID is
-**`conversation-bookmarks`**. This command installs directly from GitHub, not from a
-claimed catalog listing. Normal Hermes dependency and capability consent still applies.
+The package works alone. Delivery Shelf is optional and stores different data. Installing a remote Agent half does not prove the local Desktop half is present or enabled.
 
-- **Dashboard:** restart an already-running server after installation, refresh the page,
-  and open **Saved → Bookmarks**.
-- **Desktop:** use the native Git installer described below, verify both Agent and
-  Desktop halves are enabled, then open **Saved → Bookmarks**.
-- **Mobile:** use your authenticated web Dashboard. There is no separate mobile app.
+## Save a reference
 
-### Remote Desktop setups
-
-1. In the **native Desktop app**, connect to the intended backend and profile.
-2. Open **Capabilities → Plugins → Install from Git** and enter
-   `https://github.com/mechkw/hermes-conversation-bookmarks`. The native installer installs the
-   Desktop UI locally and the Agent half on the selected backend, subject to normal
-   consent. No JavaScript compilation is required.
-3. Verify both **Desktop** and **Agent** switches are enabled, then open
-   **Saved → Bookmarks** and check the displayed profile.
-
-If the backend was installed first, **“unavailable (remote backend)”** means the
-paired local Desktop half is missing. Rescan alone cannot copy files from the
-remote server. Use the native Git installer above; do not copy a bare `plugin.js`,
-which lacks the installer's package-pairing metadata.
-
-Some Hermes builds report **“already installed”** for the Agent half while still
-installing the local Desktop half. Inspect both switches afterward: the Desktop
-half may need to be enabled explicitly. Do not force-reinstall or uninstall a
-working backend just to clear this message. If the local half remains absent,
-retain the installer error for diagnosis rather than treating the install as done.
-
-### Browser-hosted Desktop versus Dashboard
-
-The currently inspected browser-hosted Desktop bridge lacks external Desktop
-plugin loading and installation. It is not the separately supported web Dashboard.
-Use native Desktop or the authenticated Dashboard for this plugin's Saved panel;
-installing the backend alone does not add that panel to browser-hosted Desktop.
-No additional public port or unauthenticated endpoint is needed.
-
-Keep Hermes's normal authentication. The plugin does not need its own public server,
-new account, or additional inbound port.
-
-## Save your first bookmark
-
-During a conversation, ask:
-
-> “Bookmark this conversation as ‘Launch decision,’ tagged website and launch. Add the
-> note ‘Friday launch, reduced scope; revisit the deferred items next week.’”
-
-The save tool can use the session ID actually provided by its native invocation. If
-that context is unavailable, it requires an explicit session ID rather than guessing.
-You can also use **Saved → Bookmarks → Save bookmark**:
-
-1. Choose a recent **Conversation** by its title and date.
-2. Leave **Response** set to **Entire conversation**, or choose a recent assistant
-   reply. Search the reply previews to narrow the choices; user prompts and tool
-   messages are not offered.
-3. Write the title, note and tags, or select a reply and click **Generate details**.
-   Review the AI draft, edit anything you want, then save. Generation does not save.
-
-**Context** offers 5, 10, 20 or 50 previous exchanges, defaulting to **10**. Explicit
-selection saves the choice for this profile; existing presets (including 5) remain
-selected. A legacy non-preset API value displays as 10 without an opening-time write;
-clicking Generate details saves that displayed value before requesting a draft.
-Generate details sends the selected response, its preceding real user request, and
-up to that many earlier logical exchanges through Hermes’s configured model service.
-It never sends later conversation text. A compact notice flags any shortening of earlier context;
-the API response includes the actual and requested counts. Oversized or unavailable focal text is refused rather
-than silently shortened. Entire conversation remains a manual-save option.
-
-You can edit while generation runs; a late result cannot overwrite those edits or a
-changed selection. Errors leave your draft intact; click Generate details again to
-retry. The setting has its own Retry control. Switching profile/connection or closing
-the editor discards late results. Older hosts without plugin LLM support can still
-save manually; generation requires a current host and indexed native history.
-
-The selected native IDs stay behind the controls. Changing the conversation clears
-any response selection so an answer from another conversation cannot carry over.
-
-A good title tells your future self **why you saved it**:
-
-- “Launch decision” rather than “Friday chat.”
-- “Why the cache kept serving old images” rather than “Debugging.”
-- “Three questions for the next meeting” rather than “Useful response.”
-
-The chooser reads bounded recent session details and assistant-response previews only
-when requested. It does not store those previews in bookmark metadata or add facts to
-Hermes memory. On an explicit save request, the current agent may generate missing
-title, tags and description from context it already has. Description uses the existing
-note field; the plugin has no independent model client or background transcript collector.
-
-### Save with /bookmark
+For a model-free current-conversation save, supply all metadata:
 
 ```text
-/bookmark
-/bookmark Approved plugin art direction #branding, plugins
-/bookmark #branding --description "Keep the approved direction"
-/bookmark Approved plugin art direction #branding, plugins --description "Keep the approved direction"
-/bookmark help
+/bookmark Friday launch decision #launch, planning --description "Friday stays; scope is reduced."
 ```
 
-Bare `/bookmark` requests a save. The current native agent generates any omitted
-**title, tags and description**, preserves supplied details, saves, searches/readbacks
-the saved ID, then briefly reports the saved details and which were generated. No
-unnecessary clarification is requested. `/bookmark help` alone shows help.
+Bare `/bookmark` requests capture with missing metadata completed by the current agent. Bare `/bookmarks` browses without saving. Use `/bookmarks browse launch` to search saved annotations. Explicit `add` forms are available on both singular and plural commands.
 
-Supplying all three fields saves directly and reports the actual stored details after
-readback, with no agent turn. Description maps to **note**, not a new database field.
-Use `--description ""` to deliberately retain an empty note rather than generate one.
-This does not rename the native conversation and uses no message ID.
+For a response reference, open **Save bookmark**, choose a conversation and optional assistant response, enter annotations, and select **Save bookmark**. Optional **Generate details** produces a draft only. Review it before Save; generation can replace existing draft fields.
 
-Titles need no quotes. The first `#` at the start or after whitespace starts the
-comma-separated tags; `C#` and `issue#42` inside a title remain literal. Starting with
-`#tags` leaves title generation to the agent. `--description` requires a single- or
-double-quoted value and may appear before or after title/tags; quote/backslash escaping
-follows shell quoting, without shell execution or variable expansion. Duplicate or
-unclosed description options are errors. Use the tool/page when your title contains a
-whitespace-delimited `#`, reserved `--description` syntax, or a tag contains a literal comma.
+Check the saved bookmark before repeating a request with an uncertain outcome. Creates are not idempotent. An accepted agent handoff is queued work, not a successful save. Assisted gateway saves require explicit permission described in [Commands](COMMANDS.md#complete-missing-details-with-the-current-agent); the plugin does not enable it itself.
 
-Titles must be nonempty printable text up to 160 characters. Supply at most 20 tags,
-each 1–40 printable characters; empty/trailing/doubled comma entries are rejected.
-Tags retain their first spelling/case after boundary trimming and case-insensitive
-deduplication. The existing UI/API/tool tag format is
-unchanged: commas inside a structured tag are still literal.
+## Configure native Telegram panels
 
-The host must supply the actual current session ID. A chat without a stored session
-or an older host without command context gets an actionable error, never a guessed
-latest session or a session from an environment variable. Start/resume a conversation,
-or upgrade such an older host; the explicit-ID tool/page remains available. Missing
-or foreign-profile sources are refused. No search/update/delete subcommands are added.
+1. Resolve the intended profile's Hermes home.
+2. Create `plugin-data/conversation-bookmarks/telegram-owners.json` beneath that home.
+3. Store a JSON array of authorized Telegram user IDs as decimal strings. For example, using a fictional ID:
 
-### Current-agent handoff consent
-
-The host must support `PluginContext.inject_message` and have a live route back to this
-session. Gateway/TUI handoff is default-off. Only if you trust this plugin and want this
-behavior, explicitly grant in the intended profile's configuration:
-
-```yaml
-plugins:
-  entries:
-    conversation-bookmarks:
-      allow_gateway_injection: true
+```json
+["123456789"]
 ```
 
-This allows the host to queue an agent turn and potentially send its reply to the
-conversation's messaging platform. The plugin never changes configuration, grants
-consent, creates a fresh conversation, or substitutes another model. Missing/denied
-support returns an error with no command-side save. You can instead supply all three
-fields, use the page, or ask your current agent to save via the tools.
+4. Open `/bookmarks` from an authorized account in the intended chat/topic.
+5. Choose **Add this conversation**, review the title, and select **Save conversation reference** only if you want that bookmark.
 
-An accepted handoff is **queued, not saved**. The command suppresses an extra success
-message; the agent's verified save/readback is the completion. If no reply arrives,
-check host routing/logs and search bookmarks before retrying (creates are not idempotent).
-Current official docs note that gateway-backed classic CLI injection may be recorded
-in session history without appearing in the attached CLI; use the direct path there
-if a visible response is required. Agent/tool availability, normal provider processing,
-usage charges, and host safety controls still apply. No live-provider or platform
-transport test is implied by the plugin's fixture tests.
+The policy accepts at most 50 IDs and denies native access when absent or invalid. It is separate from Shelf's owner policy and the gateway's allowed-user list. Revocation prevents future authorized panel interactions; it does not erase saved annotations. This policy controls native panels, not every legacy command/tool save.
 
-### Bookmark a particular response
+Reference-only Add saves the title and session with no note, tags, model call, or copied messages. Use a metadata command or edit the bookmark for annotations. Buttons expire after ten minutes and bind to the owner, chat/topic, message, session, profile, and host lifecycle. Open a fresh panel after expiry or reset.
 
-In the page editor, choose a conversation, then select an assistant reply from
-**Response**. The options show short previews and dates rather than numeric IDs.
-The plugin verifies that the underlying message belongs to that conversation in the
-bound profile. Existing bookmarks retain their source reference even when the source
-has been pruned or is outside the recent choices.
+Panel details can expose annotation text and source identifiers to other chat participants. A shared group source and a shared profile are not private per-user storage. Use a private conversation for private context.
 
-The structured API/tools still accept exact **native Hermes integer message IDs**;
-Telegram and Discord message IDs are not interchangeable with them.
+## Inspect or remove bookmarks
 
-Response references identify a source moment, but **Open conversation opens the session**;
-it does not promise an exact-message jump or scroll position. Choose **Entire conversation**
-if you only need a conversation-level bookmark.
+Select a title to open its adjacent inspector. Use **Open conversation** in native Desktop or the supplied resume command on the same backend. Opening a response bookmark resumes its conversation, not an exact-message scroll position.
 
-## Find, edit, and remove
+Use checkboxes for removal. **Select page** selects that page only. Selection can span pages, up to 100 bookmarks. Changing filters or refreshing clears it. Review **Remove selected bookmarks**, then confirm **Remove metadata**.
 
-Search titles, notes, and tags; filter by an exact tag; sort by newest saved, oldest saved,
-or title. Search does not inspect conversation text. Tag filters are case-insensitive,
-including older lowercase entries; stored tags are not rewritten. In the
-editor, enter one tag per line; commas inside a tag remain part of that tag.
+Bulk removal is all-or-nothing if any selected ID/revision changed. It deletes only annotation records. There is no Trash, Archive, or recovery timer. Never delete the native conversation as a workaround for a stale bookmark.
 
-Editing uses the revision you loaded. If another client saves first, refresh and review
-the newer entry before retrying; a stale edit does not silently overwrite it. The UI
-retains the unsaved draft on a revision conflict.
+## Change display preferences
 
-Removal deletes only the bookmark's metadata. It never deletes a conversation, message,
-file, or memory. The UI asks for confirmation.
+Open **Bookmark settings** from the collection or the native Bookmarks settings page. **Show notes in list** and **Show source status in list** save immediately when changed. They do not remove notes, references, or inspector information.
 
-## Return to the source
+The editor's separate **Context** preference controls draft generation, not transcript retention. Default is 10 previous exchanges, with 5, 10, 20, and 50 available in the UI.
 
-**Desktop:** use **Open conversation**. The plugin rechecks source availability and calls
-Hermes's supported session-opening interface with the bound profile. Actual navigation
-and history loading remain the host's responsibility.
+## Back up or erase annotations
 
-**Dashboard:** copy the session ID or the supplied profile-qualified resume command.
-The plugin does not invent a Dashboard route. Run the command on the **same backend
-machine** that owns the session, not an unrelated local Hermes installation.
+The backend profile stores `plugin-data/conversation-bookmarks/bookmarks.sqlite3`. Use SQLite's backup API or stop writers for a consistent copy. Protect titles, notes, tags, references, and policies as private data.
 
-For a known session, the CLI form is:
+The bookmark database is not a transcript backup. Back up Hermes's native session store separately if you need the conversations. Ordinary plugin updates and removal leave annotation data in place.
 
-```sh
-hermes --profile default --resume example-session-001
-```
+For deliberate erasure, stop or disable clients and remove only this plugin's own data directory. Do not remove native `state.db` or the broader `plugin-data/` tree.
 
-Replace the fictional ID and profile with the actual source. `/bookmark` uses only the
-current session supplied by Hermes; use the tool/page for a different explicit source.
-
-## When the source disappears
-
-Bookmarks are **references, not transcript backups**. Normal Hermes retention, manual
-deletion, or removal of an individual message can make a source unavailable. The card
-remains, along with your title, note, and tags; you can still edit or remove it.
-
-Source status distinguishes an available reference, missing session, missing message,
-missing source store, or an unavailable source. Retargeting an entry to a different
-session/message requires fresh validation. A source can disappear after a successful
-check if another process prunes it; saving a bookmark does not change retention rules.
-
-## Profiles, storage, and backup
-
-Each backend profile has its own metadata database:
-
-```text
-$HERMES_HOME/plugin-data/conversation-bookmarks/bookmarks.sqlite3
-```
-
-The plugin checks existence against that profile's `state.db`, opened read-only. It reads
-source identifiers/profile labels for ordinary save validation. Explicit chooser
-requests read bounded visible previews; Generate details additionally reads bounded
-visible user/assistant context for user-initiated inference. Hidden, synthetic,
-system/tool, reasoning and media payloads are excluded. Neither context nor previews
-are persisted; only reviewed annotations and the context-count setting are stored
-in the plugin database. It never initializes or repairs the native source database.
-
-The default profile commonly uses `~/.hermes`; named profiles have their own homes.
-A profile hint in a request is not permission to access another profile. If the host
-cannot bind the intended profile, the plugin refuses the mismatch.
-
-There is no automatic bookmark expiration. Ordinary package updates/removal leave data
-in place. Back up with SQLite's backup API or stop writers first; copying a live main
-SQLite file alone may not capture all activity. Protect backups as private data: titles,
-notes, tags, and source references can themselves be sensitive.
-
-To erase bookmark data, disable/stop clients and deliberately remove only this plugin's
-own data directory. Never delete the native `state.db` or the broader `plugin-data/`
-directory as a shortcut. Other software running as the same OS user is not sandboxed
-by this plugin.
-
-## Update, disable, or remove
+## Update or disable
 
 ```sh
 hermes plugins update conversation-bookmarks
 hermes plugins disable conversation-bookmarks
 hermes plugins remove conversation-bookmarks
+hermes plugins list
 ```
 
-Verify the resulting state in `hermes plugins list` and Desktop's controls. Restart a
-running backend after Python changes and rescan Desktop after package updates. Removing
-a package is not data erasure.
+Use the intended profile. Verify relevant Agent and Desktop state after changes. Activate updated backend and UI code through their normal host lifecycle. Obtain a restart decision before interrupting active work. Removing package code is not data erasure.
 
-## Troubleshooting
+## Diagnose failures
 
-### The page is missing, or requests return 404
+| Symptom | Action |
+| --- | --- |
+| UI missing or API 404 | Check backend, selected profile, both relevant halves, and effective enablement. |
+| No native current session | Start/resume the intended conversation or choose an explicit source in the editor. |
+| Handoff unavailable | Supply title, tags, and description, or use the editor. Queued work is not saved. |
+| Generate unavailable | Choose an eligible assistant response and check supported Agent/model registration. Manual saving remains available. |
+| Source absent from chooser | Check the profile and bounded recent search window. Do not substitute a guessed session. |
+| Source unavailable | Keep or edit annotations. Bookmarks cannot recover a pruned transcript. |
+| Revision conflict | Refresh and review before resubmitting the edit or removal. |
+| Panel/send outcome uncertain | Browse the exact profile before repeating a save. |
+| Old operation disappears on profile switch | Return to the original profile and read back before repeating a mutation. |
 
-Check the package ID, connected machine, selected profile, and both relevant enablement
-switches. Restart the Dashboard backend after installation and rescan Desktop. A frontend
-can be installed while its connected backend is absent or disabled.
-
-### Saving says the source is missing or belongs elsewhere
-
-Check the exact session ID, profile, and backend. For a message bookmark, confirm its
-native integer ID belongs to the same session. Do not substitute a platform message ID
-or choose the latest conversation as a workaround.
-
-### Generate details is unavailable
-
-Manual saving remains available. Generation needs the host’s plugin LLM/task APIs
-and native Agent plugin registration in the serving process. Normal `hermes serve`
-and `hermes dashboard` startup perform that registration before mounting the UI API;
-no chat warm-up is needed. After upgrading an already-running backend, restart only
-that backend to activate the new code. A custom host that imports only the API router
-must provide the normal plugin lifecycle; the plugin does not bootstrap private host
-registries. Missing timeline indices require opening the conversation in Hermes;
-the plugin never repairs native history.
-
-### The source store is unavailable
-
-A missing store, incompatible schema, unreadable file, or linked path is refused rather
-than silently treated as trustworthy. Check Hermes's own health and permissions. Do not
-point the plugin at another profile's database or remove its read-only safeguards.
-
-### I switched profiles and an operation disappeared
-
-Requests and callbacks are tied to their original profile/connection. Switching away
-prevents old results from appearing in the new view. A write already dispatched may have
-completed in the original profile; return there and read back before repeating it.
-
-### My entries returned after reinstalling
-
-Package code and persistent metadata are separate. See storage and backup above for
-intentional erasure.
-
-For unresolved issues, [open a bug report](https://github.com/mechkw/hermes-conversation-bookmarks/issues/new/choose)
-with versions and a fictional reproduction. Keep real conversation IDs, private paths,
-notes, and transcript content out of public reports.
+Report bugs with fictional reproductions. Use [SECURITY.md](../SECURITY.md) for private vulnerabilities, with **repobugs@virtuedev.com** as the fallback.

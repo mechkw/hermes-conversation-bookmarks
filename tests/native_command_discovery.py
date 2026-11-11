@@ -52,7 +52,7 @@ def main():
             manifest = yaml.safe_load((root / 'plugin.yaml').read_text())
             plugin = manifest['name']
             assert plugin in EXPECTED and plugin not in ids
-            assert manifest['provides_commands'] == [EXPECTED[plugin][0]]
+            assert EXPECTED[plugin][0] in manifest['provides_commands']
             ids.append(plugin)
             target = home / 'plugins' / plugin
             target.mkdir(parents=True)

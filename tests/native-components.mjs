@@ -4,7 +4,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
 export const uiExports={
- 'components/ui/button':['Button'], 'components/ui/input':['Input'],
+ 'components/ui/button':['Button'], 'components/ui/checkbox':['Checkbox'], 'components/ui/switch':['Switch'], 'components/ui/codicon':['Codicon'], 'components/ui/input':['Input'],
  'components/ui/textarea':['Textarea'],'components/ui/search-field':['SearchField'],
  'components/ui/select':['Select','SelectTrigger','SelectValue','SelectContent','SelectItem'],
  'components/ui/dialog':['Dialog','DialogContent','DialogHeader','DialogTitle','DialogDescription','DialogFooter'],
@@ -12,6 +12,7 @@ export const uiExports={
  'components/ui/tabs':['Tabs','TabsList','TabsTrigger'],
  'components/ui/empty-state':['EmptyState'],'components/ui/error-state':['ErrorState'],
  'components/ui/loader':['Loader'],'app/settings/primitives':['ListRow'],
+ 'components/ui/segmented-control':['SegmentedControl'],
 };
 export async function realUI(source){
  const names=Object.values(uiExports).flat(),index=await readFile(join(source,'apps/desktop/src/sdk/index.ts'),'utf8');
@@ -29,6 +30,11 @@ export async function realUI(source){
  const compiler=await compile(await readFile(join(dashboard,'index.css'),'utf8'),{base:dashboard,onDependency:()=>{}});
  const scanner=new Scanner({sources:[{base:dashboard,negated:false,pattern:'**/*.{tsx,ts,jsx,js}'},{base:join(source,'node_modules/@nous-research/ui/dist'),negated:false,pattern:'**/*.js'}]});
  const dashCSS=compiler.build(scanner.scan());
+ // Inline the real host icon font: a page-hosted harness cannot resolve the
+ // packaged desktop stylesheet's relative font URL. Do not fake icon glyphs.
+ const codicons=join(source,'node_modules/@vscode/codicons/dist');
+ const font=(await readFile(join(codicons,'codicon.ttf'))).toString('base64');
+ const nativeStyles=nativeCSS.replace(/url\([^)]*codicon[^)]*\.ttf[^)]*\)/g,`url(data:font/ttf;base64,${font})`);
  const cssBootstrap=css=>`document.querySelector('style')?.remove();const nativeStyles=document.createElement('style');nativeStyles.textContent=${JSON.stringify(css)};document.head.append(nativeStyles);`;
- return {names,imports,nativeBootstrap:cssBootstrap(nativeCSS),dashboardBootstrap:cssBootstrap(dashCSS)};
+ return {names,imports,nativeBootstrap:cssBootstrap(nativeStyles),dashboardBootstrap:cssBootstrap(dashCSS)};
 }

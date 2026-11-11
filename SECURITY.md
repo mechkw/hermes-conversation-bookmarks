@@ -2,43 +2,40 @@
 
 ## Report privately
 
-Please do not put secrets, private conversation excerpts, file contents, or exploitable
-proofs into a public issue. Use [GitHub private vulnerability reporting](https://github.com/mechkw/hermes-conversation-bookmarks/security/advisories/new)
-as the preferred channel. If you cannot use GitHub private reporting, email
-**repobugs@virtuedev.com** with the subject “Conversation Bookmarks security”.
-Include the affected commit or release, Hermes version, operating system, reproduction
-steps using fictional data, and expected versus observed behavior.
+Do not put secrets, private annotations, conversation excerpts, source identifiers, or exploitable proofs in public issues. Use [GitHub private vulnerability reporting](https://github.com/mechkw/hermes-conversation-bookmarks/security/advisories/new) if available. Otherwise email **repobugs@virtuedev.com** with the subject “Conversation Bookmarks security”.
 
-## Supported versions
+Include the affected release or commit, Hermes version, operating system, and fictional reproduction steps. Security fixes target the latest published release. No response-time SLA is promised.
 
-Security fixes target the latest published release. Older versions should be upgraded
-before reporting a suspected issue, unless the upgrade itself is the issue.
+## Host and profile boundaries
 
-## Trust boundaries
+The plugin runs with its Hermes host's permissions, not in a sandbox against other software under the same operating-system account. Keep native authentication enabled and restrict host access. A profile hint cannot authorize another home.
 
-This plugin runs with the permissions of its Hermes host. It is not a sandbox for
-other programs running under the same operating-system account. Keep Hermes's native
-authentication enabled, restrict host access, and install only plugins you trust.
-Do not publish local plugin data, private screenshots, or real session exports in bug reports.
+Bookmarks belong to the backend profile, including a remote backend. Clients sharing that profile share its annotations. A shared group session is not private per-user storage. Protect metadata and backups even when no transcript is copied.
 
-## Explicit save handoff
+## Source reads and model processing
 
-An explicit `/bookmark` with missing metadata may queue the current native agent via
-`PluginContext.inject_message`. The plugin makes no model call of its own, but the
-normal current-session agent processes context and supplied metadata under its usual
-provider/privacy settings. Gateway/TUI injection requires explicit profile-local
-`plugins.entries.conversation-bookmarks.allow_gateway_injection: true`; the plugin never
-grants itself consent. This permission can lead to a reply on the existing external
-messaging route and is not a Python sandbox.
+Ordinary source validation reads identifiers and ownership. Requested source choosers read bounded session labels and visible assistant-response previews through a plugin-owned read-only native adapter. They do not create or migrate the native source store. Missing or unsupported schemas fail rather than becoming permission to search elsewhere.
 
-Supplied text is JSON-framed as inert data, not prompt instructions. This is defense in
-depth, not a guarantee that every model resists malicious content. The plugin never
-scrapes or copies native transcripts; its source adapter reads only identifiers and
-ownership labels. Generated descriptions can themselves contain sensitive context, so
-protect the metadata database just as you would supplied notes.
+Explicit editor **Generate details** sends the selected response, its preceding user request, and bounded earlier eligible exchanges to Hermes's configured model service. It excludes later conversation text and recognized private/tool/reasoning carriers. The collector cannot infer provenance the host did not preserve, such as arbitrary unmarked third-party injected text. Generation returns a draft only; saving remains explicit. Provider processing, costs, and retention policies apply.
+
+An explicit slash save with omitted metadata can queue the current agent through `PluginContext.inject_message`. That workflow uses context already available to the agent, not the editor's selected-response cutoff. Gateway-assisted handoff needs explicit profile-local `plugins.entries.conversation-bookmarks.allow_gateway_injection`. The plugin does not grant itself permission. Queue acceptance is not a successful save.
+
+Supplied metadata is framed as data, not instructions. That is not a guarantee of arbitrary model adherence. Generated notes can summarize private source content. The plugin stores annotations and references, not a second transcript archive, a memory entry, or preserved file bytes.
+
+## Removal and unavailable sources
+
+New references require source validation. A missing unchanged reference can remain while its annotations are edited. Bookmarks do not retain, restore, or reconstruct pruned sources.
+
+Single and bulk removal delete bookmark metadata only, never native conversations or messages. Bulk removal validates exact IDs/revisions and is all-or-nothing. There is no Trash or recovery timer. A stale revision is an error, not permission to overwrite another client's change. Creates are not idempotent, so inspect Saved before repeating an uncertain save.
+
+## Native Telegram panels
+
+Optional panels use a separate profile-local Bookmarks owner policy, distinct from Shelf and gateway admission. Missing or invalid policy denies native panel access. This policy does not replace the host's controls for every command or tool path.
+
+Callbacks bind to owner, chat/topic, message, session, profile, and application lifecycle and expire after ten minutes. Add previews the current title; **Save conversation reference** explicitly saves only a title/reference with no note, tags, model call, or copied messages. Panel details can expose private annotations and source identifiers to other chat participants.
+
+An uncertain confirmation may follow a committed save. Check the exact profile before retrying. Native handler support, captured-transport tests, and actual live delivery are separate evidence.
 
 ## Release checks
 
-Changes that affect profile binding, stored text, filesystem access, or download behavior
-require regression tests. A browser check alone is not a security review. Reports are
-handled without promising an unsupported response-time SLA.
+Changes to profile binding, source eligibility, generation input, stored text, callbacks, or deletion require regression evidence. Source inspection and browser checks alone do not prove native or live acceptance. Keep real plugin data, policies, screenshots, and native session exports out of public reports.

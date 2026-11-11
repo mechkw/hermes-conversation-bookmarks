@@ -35,7 +35,7 @@ def main():
                    GIT_CONFIG_GLOBAL=os.devnull)
         fixture = base/'fixture'
         fixture.mkdir()
-        for name in ('plugin.yaml', '__init__.py', 'VERSION'):
+        for name in ('plugin.yaml', '__init__.py', 'telegram_bookmarks.py', 'VERSION'):
             shutil.copy2(ROOT/name, fixture/name)
         for name in ('dashboard', 'desktop'):
             shutil.copytree(ROOT/name, fixture/name, ignore=shutil.ignore_patterns('__pycache__'))

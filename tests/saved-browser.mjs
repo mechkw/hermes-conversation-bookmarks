@@ -6,6 +6,8 @@ import {createRequire} from 'node:module';
 import {realUI} from './native-components.mjs';
 import {metadataCases,pendingMutationCases,sourceFenceCases} from './metadata-browser.mjs';
 import {selectorCases} from './selector-browser.mjs';
+import {contestCases} from './contest-browser.mjs';
+import {candidateShelfCases,editCandidateSeed,candidateShelfFences} from './candidate-shelf-browser.mjs';
 import {generationCases} from './generation-browser.mjs';
 import {editorUXCases} from './editor-ux-browser.mjs';
 import {sourceDetailCases,titleBoundsCases,focusEditorCases} from './review-browser.mjs';
@@ -23,6 +25,10 @@ const source=process.env.HERMES_SOURCE||join(process.env.HOME,'.hermes/hermes-ag
 const proof=process.env.SAVED_PROOF_DIR||join(process.env.TMPDIR||tmpdir(),'saved-ui-proof');
 await mkdir(proof,{recursive:true});
 const peer=process.env.SAVED_PEER_REPO||resolve(root,'..',root.endsWith('bookmarks')?'hermes-delivery-shelf':'hermes-conversation-bookmarks');
+const shelfRepo=root.endsWith('bookmarks')?peer:root;
+const nativeShelfSource=(await readFile(join(shelfRepo,'ui/desktop.jsx'),'utf8')).includes("from './NativeShelf.jsx'");
+const entryButton=(page,id,title,adapter)=>page.getByRole('button',{name:adapter==='desktop'&&nativeShelfSource&&id==='delivery-shelf'?'Collapse '+title:title,exact:true});
+const savedButtons=page=>page.getByRole('button',{name:/^(Collapse )?Saved (conversation-bookmarks|delivery-shelf)$/});
 // Fail before starting a browser/server, rather than silently testing old or absent UI.
 for(const repo of [root,peer]){
  try{for(const file of ['ui/Saved.jsx','desktop/plugin.js','dashboard/dist/index.js','tests/saved-browser.mjs'])await readFile(join(repo,file));}
@@ -71,19 +77,21 @@ window.__QA_UNMOUNT__=()=>root.unmount();
 `;
 const sdkStub=`${ui.imports}
 import React from 'react';import {atom} from 'nanostores';
-export const host={state:{profile:atom('default'),connectionId:atom('fixture')},navigate:path=>{window.__QA_NAVIGATED__=path;},openSession:async(id,options)=>{window.__QA_OPENED__={id,options};}};
+export const host={state:{profile:atom('default'),connectionId:atom('fixture'),focusedSessionOwner:atom({connectionId:'fixture',profile:'default'}),focusedStoredSessionId:atom('fictional-session-01')},navigate:path=>{window.__QA_NAVIGATED__=path;},openSession:async(id,options)=>{window.__QA_OPENED__={id,options};}};
 export const useValue=a=>React.useSyncExternalStore(a.subscribe,a.get,a.get);
+export {atom};export const COMPOSER_AREAS={attachments:'composer.attachments'},TITLEBAR_AREAS={center:'titleBar.center'},PALETTE_AREA='palette';
 export const ROUTES_AREA='routes',SIDEBAR_NAV_AREA='sidebar.nav';
-window.__QA_SDK__={host,useValue,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}};
+window.__QA_SDK__={host,useValue,atom,COMPOSER_AREAS,TITLEBAR_AREAS,PALETTE_AREA,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}};
 export function installPluginSdk(){}
 const blob=s=>URL.createObjectURL(new Blob([s],{type:'text/javascript'}));
 export const sdkImportMap=()=>({
  'react':blob('export default window.__QA_REACT__;export const {useState,useEffect,useRef,useId,useMemo}=window.__QA_REACT__;'),
- '@hermes/plugin-sdk':blob('export const {host,useValue,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}}=window.__QA_SDK__;')
+ '@hermes/plugin-sdk':blob('export const {host,useValue,atom,COMPOSER_AREAS,TITLEBAR_AREAS,PALETTE_AREA,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}}=window.__QA_SDK__;')
 });`;
 const contextStub=`export const declaredCapabilities=()=>[];
 import {registry} from '${source}/apps/desktop/src/contrib/registry.ts';
-export function createPluginContext(id,track){return {registerMany(items){const dispose=registry.registerMany(items.map(c=>({...c,id:id+':'+c.id,source:'plugin:'+id})));track(dispose);return dispose;},onDispose:track,os:{writeClipboard:async(text)=>{window.__QA_CLIPBOARD__=text;return true;}},rest:(path,opts={})=>window.__QA_FETCH__('/api/plugins/'+id+path,{method:opts.method||'GET',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined})};}`;
+import {settingsPageContribution} from '${source}/apps/desktop/src/contrib/settings-pages.ts';
+export function createPluginContext(id,track){const registerMany=items=>{const dispose=registry.registerMany(items.map(c=>({...c,id:id+':'+c.id,source:'plugin:'+id})));track(dispose);return dispose;};return {registerMany,registerSettingsPage:page=>registerMany([settingsPageContribution(page)]),onDispose:track,os:{writeClipboard:async(text)=>{window.__QA_CLIPBOARD__=text;return true;}},rest:(path,opts={})=>window.__QA_FETCH__('/api/plugins/'+id+path,{method:opts.method||'GET',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined})};}`;
 const desktopEntry=common+`
 ${ui.nativeBootstrap}
 import {loadRuntimePlugin,unloadRuntimePlugin} from '${source}/apps/desktop/src/contrib/runtime-loader.ts';
@@ -102,7 +110,7 @@ window.__QA_RECORDS__=$pluginRecords;
 function App(){
  React.useSyncExternalStore($registryVersion.subscribe,$registryVersion.get,$registryVersion.get);
  const routes=registry.getArea('routes'),nav=registry.getArea('sidebar.nav');
- return <><nav aria-label="Native contributions">{nav.map(c=><a key={c.id} href={c.data.path}>{c.data.label}</a>)}</nav>{routes[0]?React.createElement(routes[0].render):<p>No active Saved plugins.</p>}</>;
+ return <>{registry.getArea('titleBar.center').map(c=>React.createElement(c.render,{key:c.id}))}<nav aria-label="Native contributions">{nav.map(c=><a key={c.id} href={c.data.path}>{c.data.label}</a>)}</nav>{routes[0]?React.createElement(routes[0].render):<p>No active Saved plugins.</p>}</>;
 }
 root.render(<App/>);
 for(const id of ids){codes[id]=await (await fetch('/api/qa/desktop/'+id,{headers:{'X-Hermes-Session-Token':'fictional-test-session'}})).text();await window.__QA_LOAD__(id);}
@@ -130,13 +138,14 @@ const stubPlugin={name:'host-boundary-doubles',setup(b){
  b.onLoad({filter:/.*/,namespace:'qa'},args=>({contents:({keybind:'export const useKeybindHint=()=>null;',hermes:'export const getHermesConfigRecord=async()=>({}),retainConfigReadOrigin=x=>x,saveHermesConfig=async()=>({ok:true});',api:apiStub,profile:'export const dashboardServingProfile=()=>"default";',utils:'export const cn=(...a)=>a.join(" "),timeAgo=()=>"",isoTimeAgo=()=>"";',i18n:'export const useI18n=()=>({t:{}});',sdk:sdkStub,fs:'export const isReadFileErrorResult=()=>false;',notifications:'export const notifyError=(e)=>{throw e;};',events:'export const trackGatewayEventDisposers=(track,fn)=>fn();',plugin:contextStub})[args.path],loader:'js',resolveDir:root}));
 }};
 const pins={};
-for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx',repo.endsWith('bookmarks')?'ui/Bookmarks.jsx':'ui/Shelf.jsx','tests/saved-browser.mjs','tests/saved_browser_server.py','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/collection-focus.js','ui/style.css',...(repo.endsWith('bookmarks')?['ui/BookmarkEditor.jsx','tests/editor-ux-browser.mjs','tests/generation-browser.mjs','dashboard/plugin_api.py']:[]),'tests/review-browser.mjs','tests/selector-browser.mjs','tests/metadata-browser.mjs','tests/native-components.mjs'])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
+pins[join(root,'tests/candidate-shelf-browser.mjs')]=createHash('sha256').update(await readFile(join(root,'tests/candidate-shelf-browser.mjs'))).digest('hex');
+for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx',repo.endsWith('bookmarks')?'ui/Bookmarks.jsx':'ui/Shelf.jsx','tests/saved-browser.mjs','tests/saved_browser_server.py','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/collection-focus.js','ui/style.css',...(repo.endsWith('bookmarks')?['ui/BookmarkEditor.jsx','ui/BookmarkSettings.jsx','telegram_bookmarks.py','tests/contest-browser.mjs','tests/editor-ux-browser.mjs','tests/generation-browser.mjs','dashboard/plugin_api.py']:[]),'tests/review-browser.mjs','tests/selector-browser.mjs','tests/metadata-browser.mjs','tests/native-components.mjs'])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
 async function independentState(page,fixture,api,base,auth,scenario,order){
  await page.waitForFunction(()=>window.__QA_READY__);
  await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(1);
  const available=fixture.frontend.filter(id=>fixture.enabled.includes(id));
  await expect(page.getByRole('tab')).toHaveCount(available.length);
- if(available.length)await expect(page.getByRole('button',{name:'Saved '+available[0],exact:true})).toBeVisible();
+ if(available.length)await expect(entryButton(page,available[0],'Saved '+available[0],'desktop')).toBeVisible();
  await expect(page.getByRole('button',{name:/Install or enable/})).toHaveCount(2-available.length);
  await expect(page.getByText(/Could not open your shelf|Could not load bookmarks|Plugin not found/)).toHaveCount(0);
  expect(await page.evaluate(()=>window.__QA_REQUESTS__.every(r=>r.method==='GET'))).toBe(true);
@@ -179,7 +188,7 @@ async function availabilityFailures(page,adapter){
   await availability.getByRole('button',{name:'Retry deliverables',exact:true}).click();
   await expect(page.getByRole('tab')).toHaveCount(2);
   await page.getByRole('tab',{name:'Deliverables',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Saved delivery-shelf',exact:true})).toBeVisible();
+  await expect(entryButton(page,'delivery-shelf','Saved delivery-shelf',adapter)).toBeVisible();
  }
  if(adapter==='desktop'){
   let release,seen;
@@ -189,7 +198,7 @@ async function availabilityFailures(page,adapter){
   await page.evaluate(()=>window.__QA_SDK__.host.state.connectionId.set('held-connection'));
   await entered;
   await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Saved delivery-shelf',exact:true})).toHaveCount(0);
+  await expect(entryButton(page,'delivery-shelf','Saved delivery-shelf',adapter)).toHaveCount(0);
   await page.evaluate(()=>window.__QA_SDK__.host.state.connectionId.set('recovered-connection'));
   await expect(page.getByRole('tab')).toHaveCount(2);
   release();await page.unroute(pattern,{behavior:'wait'});
@@ -225,6 +234,8 @@ try{
    // Delay one real script response, not data substitution, to force both load orders.
    if(adapter==='dashboard'&&fixture.enabled.length===2){const delayed=order==='forward'?'delivery-shelf':'conversation-bookmarks';await page.route('**/dashboard-plugins/**/'+delayed+'/dist/index.js',async route=>{await new Promise(r=>setTimeout(r,350));await route.continue();});}
    await page.goto(base+'/qa/'+adapter+'?order='+order);
+   const candidateShelf=adapter==='desktop'&&nativeShelfSource;
+   const legacyProducts=candidateShelf?['conversation-bookmarks']:['conversation-bookmarks','delivery-shelf'];
    try{
     if(scenario.startsWith('ui-')){
      await independentState(page,fixture,api,base,auth,scenario,order);
@@ -257,17 +268,18 @@ try{
     for(const id of fixture.enabled){
      const label=id==='conversation-bookmarks'?'Bookmarks':'Deliverables';
      await page.getByRole('tab',{name:label,exact:true}).click();
-     await expect(page.getByRole('button',{name:'Saved '+id,exact:true})).toBeVisible();
+     await expect(entryButton(page,id,'Saved '+id,adapter)).toBeVisible();
+     if(candidateShelf&&id==='delivery-shelf'){await editCandidateSeed(page,api,adapter+' '+order+' verified');continue;}
      // Edit through each independently scoped UI transport; verify actual backend.
      await page.getByRole('button',{name:'Saved '+id,exact:true}).click();
      const dialog=page.getByRole('dialog');
-     await dialog.getByRole('button',{name:id==='conversation-bookmarks'?'Edit bookmark':'Edit metadata'}).click();
+     await page.getByRole('button',{name:id==='conversation-bookmarks'?'Edit bookmark':'Edit metadata'}).click();
      const field=id==='conversation-bookmarks'?dialog.getByLabel('Note',{exact:false}):dialog.getByLabel('Description',{exact:false});
      const value=adapter+' '+order+' verified';await field.fill(value);
      await dialog.getByRole('button',{name:'Save changes'}).click();await expect(dialog).not.toBeVisible();
      const list=await api(id,'/entries');expect(list.total).toBe(1);expect(list.items[0][id==='conversation-bookmarks'?'note':'description']).toBe(value);
     }
-    await expect(page.getByRole('button',{name:'Saved '+fixture.enabled[fixture.enabled.length-1],exact:true})).toBeVisible();
+    await expect(entryButton(page,fixture.enabled[fixture.enabled.length-1],'Saved '+fixture.enabled[fixture.enabled.length-1],adapter)).toBeVisible();
     await expect(page.getByText(/Loading (your shelf|registered deliveries|bookmarks)/)).toHaveCount(0);
     for(const width of [360,768,1440]){
      await page.setViewportSize({width,height:1000});
@@ -275,7 +287,8 @@ try{
      expect(await page.locator('.hs-saved-tabs button,.hs-saved-missing button,.hs-saved-link').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height>0).every(n=>n.getBoundingClientRect().height>0))).toBe(true);
      await page.screenshot({path:join(proof,`${scenario}-${adapter}-${order}-${width}.png`),fullPage:true});
     }
-    if(scenario==='both'){await editorUXCases(page,adapter,api,proof);await focusEditorCases(page,adapter,api,proof);await titleBoundsCases(page,adapter,api,proof);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api);await pendingMutationCases(page,adapter,api,base);await sourceFenceCases(page,adapter,base);}
+    if(fixture.enabled.includes('conversation-bookmarks')){const before=sourceBank?.snapshot();await contestCases(page,adapter,api,proof);if(sourceBank)expect(sourceBank.snapshot(),'Bookmark bulk removal must preserve source sessions/messages').toBe(before);}
+    if(scenario==='both'){await editorUXCases(page,adapter,api,proof);await focusEditorCases(page,adapter,api,proof,legacyProducts);await titleBoundsCases(page,adapter,api,proof,legacyProducts);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api,legacyProducts);if(candidateShelf)await candidateShelfCases(page,api,proof);await pendingMutationCases(page,adapter,api,base,legacyProducts);if(candidateShelf)await candidateShelfFences(page,api,base);await sourceFenceCases(page,adapter,base);}
     if(fixture.enabled.length===2){
      await page.getByRole('tab',{name:'Bookmarks',exact:true}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toBeFocused();await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toHaveAttribute('aria-selected','true');
      if(adapter==='desktop'){
@@ -308,18 +321,18 @@ try{
     if(adapter==='desktop'){
      await page.evaluate(()=>window.__QA_SDK__.host.state.profile.set('foreign'));
      await expect(page.getByRole('tab')).toHaveCount(0);
-     await expect(page.getByRole('button',{name:/^Saved (conversation-bookmarks|delivery-shelf)$/})).toHaveCount(0);
+     await expect(savedButtons(page)).toHaveCount(0);
      await page.evaluate(()=>window.__QA_SDK__.host.state.profile.set('default'));
-     await expect(page.getByRole('button',{name:/^Saved (conversation-bookmarks|delivery-shelf)$/})).toBeVisible();
+     await expect(savedButtons(page)).toBeVisible();
      await page.evaluate(()=>{for(const id of ['conversation-bookmarks','delivery-shelf'])window.__QA_UNLOAD__(id);});
      await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(0);await expect(page.getByRole('heading',{name:'Saved',exact:true})).toHaveCount(0);
     }else{
      await page.evaluate(()=>window.__QA_PROFILE__('foreign'));
-     await expect(page.getByRole('button',{name:/^Saved (conversation-bookmarks|delivery-shelf)$/})).toHaveCount(0);
+     await expect(savedButtons(page)).toHaveCount(0);
      await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(0);
      await page.evaluate(()=>window.__QA_PROFILE__('default'));
      await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(1);
-     await expect(page.getByRole('button',{name:/^Saved (conversation-bookmarks|delivery-shelf)$/})).toBeVisible();
+     await expect(savedButtons(page)).toBeVisible();
     }
     expect(errors).toEqual([]);
     rows.push({scenario,adapter,order,passed:true});console.log('PASS',scenario,adapter,order);
@@ -329,7 +342,7 @@ try{
   await stop();
  }
  if(!process.env.SAVED_SCENARIOS&&!process.env.SAVED_ADAPTERS)expect(rows).toHaveLength(34);
- for(const [file,hash] of Object.entries(pins))expect(createHash('sha256').update(await readFile(file)).digest('hex')).toBe(hash);
+ for(const [file,hash] of Object.entries(pins))expect(createHash('sha256').update(await readFile(file)).digest('hex'),`Pinned source changed during verification: ${file}`).toBe(hash);
  await writeFile(join(proof,'results.json'),JSON.stringify({hostSource:source,hostCommit:execFileSync('git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),browser:browser.version(),completedAt:new Date().toISOString(),pins,cases:rows,scope:'Native loaders, Dashboard slots, Desktop registry and lifecycle; real authenticated backend. SDK host state/IPC boundaries are doubles; not full Electron or secondary-profile transport QA.'},null,2));
  console.log(`Saved matrix: ${rows.length} cases passed${process.env.SAVED_SCENARIOS||process.env.SAVED_ADAPTERS?' (filtered run)':' / 34 expected'}. Proof: ${proof}`);
 }finally{await browser?.close();await stop();await rm(scratch,{recursive:true,force:true});}

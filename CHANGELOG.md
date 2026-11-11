@@ -1,48 +1,19 @@
 # Changelog
 
-Notable user-facing changes are recorded here. Release tags identify published versions;
-this file is not a promise of future features.
+Release tags identify published versions. Unreleased notes describe source changes, not a publication or deployment receipt.
 
 ## Unreleased
 
-- Added concise native command-menu metadata and expanded non-saving command help,
-  with real-loader/menu/help/lifecycle regression probes. Documented priority/cap
-  setup and the v0.22.5 global `/help` and `/commands` omission of plugin commands;
-  no custom menu or core-help override. See [Command discovery](docs/COMMANDS.md).
-- Propagated the selected official host through `PYTHONPATH` in verification so
-  catalog child-process probes resolve host imports in clean CI environments.
+- `/bookmarks` browses without saving. Plural and singular `browse` and `add` forms are available. Bare `/bookmark` retains current-conversation capture, and help forms do not save. Unrecognized plural forms return guidance without becoming a saved title.
+- Native Plus Bookmarks and Browse bookmarks open browsing. The collection separates title-based adjacent inspection from checkbox selection for removal.
+- Page selection can span pages, up to 100 explicit bookmarks. Bulk removal checks every ID/revision in one transaction and removes all or none. Annotation removal never deletes conversations or messages and has no recovery timer.
+- Display switches control notes and source status in the list. They persist immediately without deleting annotations or changing references.
+- Source choosers read bounded recent conversation labels and eligible assistant-response previews on request. These are not full-history searches or copied transcripts.
+- Explicit Generate details uses the selected response and bounded earlier eligible exchanges to return an editable annotation draft. It excludes later text, can replace draft fields, and does not save. Current-agent slash completion retains its separate existing-context handoff.
+- Optional native Telegram panels use a separate Bookmarks owner policy. Add this conversation previews a title; Save conversation reference explicitly saves that title/reference with empty note and tags and no model call. Panels expire and bind to owner, chat/topic, session, profile, message, and application lifecycle.
+- Technical, operations, command, installation, and security guides describe the current source-read, model-processing, deletion, and shared-profile boundaries. No live Telegram, native installation, or current test-pass count is asserted here.
 
-- Fixed supplied tag casing loss: create/update now trim boundary whitespace and
-  deduplicate case-insensitively while preserving the first spelling/case. Exact tag
-  filters use Unicode casefold on both sides, so mixed-case and existing lowercase
-  records remain searchable without a migration. Structured tags retain literal commas.
-- Added mixed-case slash direct-save/handoff-to-fixture-save and API create/update/
-  readback/filter regressions, including Unicode and literal SQL-like search input.
-
-### Added
-
-- `/bookmark` requests a current-session agent save, completing omitted title, tags and
-  description only. Supplied details are preserved; description maps to note.
-- Optional `--description "text"` extends the prior title/#comma,tags shorthand. All
-  supplied metadata saves directly with readback; `/bookmark help` explicitly shows help.
-- Supported native `PluginContext.inject_message` handoff, with host-owned routing and
-  default-off gateway consent documented, never enabled by the plugin. No premature save
-  or success message: the agent must save, search/read back, then report the details.
-- Human-readable success and validation/source/context errors. Missing host session
-  context fails closed, including on older one-argument command dispatchers.
-- Native dispatcher-to-command-to-search tests for the exact approved example, parsing,
-  limits, missing/invalid sources, legacy context, and profile isolation. Additional
-  coverage verifies all omitted-field combinations, descriptions, denial/unavailable
-  injection, JSON-framed hostile data, and real native injection consent/routing seams.
-
-### Corrected
-
-- Compatibility notes: official Hermes v0.22.5 already supplies named command session
-  context through its dispatcher and gateway route; the prior documentation was wrong.
-  Existing structured tags still support literal commas. No transcript reads, native
-  source writes, or production installation are introduced.
-
-## 0.1.0 — 2026-10-23
+## 0.1.0 - 2026-10-23
 
 ### Added
 

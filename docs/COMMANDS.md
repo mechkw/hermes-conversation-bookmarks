@@ -1,149 +1,117 @@
-# Native command discovery and syntax
+# Conversation Bookmarks command reference
 
-## Commands
+[Usage guide](USAGE.md) · [Installation](INSTALLATION.md)
 
-- `/bookmark`: explicitly request a bookmark of the current conversation, not a list or menu. The current agent generates title, tags and description before saving and verifying.
-- `/bookmark [title] [#tag1, tag2] [--description "text"]`: supply any or all metadata. Only missing fields are generated; supplied fields are preserved. Description maps to the stored note. Supply all three to save directly without a model turn.
-- `/bookmark help`: show syntax without saving, even when there is no current session or handoff permission.
+- [Browse from chat or Telegram](#browse-from-chat-or-telegram)
+- [Save the current conversation](#save-the-current-conversation)
+- [Supply metadata](#supply-metadata)
+- [Complete missing details with the current agent](#complete-missing-details-with-the-current-agent)
+- [Tools](#tools)
 
-Titles need no quotes. A whitespace-delimited `#` introduces comma-separated tags;
-use a quoted `--description`, including `""` for an intentionally empty description.
-An existing current native session is required; none is guessed. This command has
-no `add` subcommand, no search subcommand and no `--file` syntax: other text is a
-title. Use the tools/page for explicit session/message IDs, search or reserved
-syntax in titles. Delivery Shelf is a separate, optional plugin for file references.
+## Browse from chat or Telegram
 
-Gateway-assisted saves require explicit
-`plugins.entries.conversation-bookmarks.allow_gateway_injection: true` consent;
-the plugin never grants it itself. Queued is not saved: confirmation follows save
-and exact readback. In a group, the host-routed session may be shared; this is not
-a private per-participant store or an owner-pinned Shelf Add workflow. Use a private
-conversation for private context. See [Operations](OPERATIONS.md#current-agent-handoff-consent).
+| Command | Meaning |
+| --- | --- |
+| `/bookmarks` | Browse saved bookmark metadata without saving. |
+| `/bookmarks browse launch` | Search saved annotations for `launch`. |
+| `/bookmark browse launch` | Singular alias for browsing with the same query. |
+| `/bookmarks help` | Show help without saving. |
+| `/bookmarks add [metadata]` | Explicit Add form. |
+| `/bookmark add [metadata]` | Singular Add alias. |
 
-## Conversation and response selection
+Bare `/bookmark` still saves the current conversation. Bare `/bookmarks` browses. Unrecognized plural forms return syntax guidance rather than becoming a bookmark title.
 
-The page can request recent conversation choices and, after selecting a conversation,
-bounded assistant-response previews through the authenticated host API. These are
-not new slash commands and do not change `/bookmark`'s current-conversation behavior.
+Outside native Telegram, `add` forwards to the current-conversation save workflow described below. On configured Telegram connections, bare `add` opens a confirmation panel instead. Supplying metadata after `add` uses the normal direct or agent-assisted save workflow.
 
-- `GET /api/plugins/conversation-bookmarks/sources/sessions?limit=30&offset=0&q=`
-  lists local conversation IDs, native titles (or source/ID fallback labels), source,
-  and epoch-second activity timestamps.
-- `GET /api/plugins/conversation-bookmarks/sources/sessions/{session_id}/responses?limit=30&offset=0&q=`
-  lists native message IDs and visible assistant previews, at most 350 characters each.
+The native Telegram panel includes recent bookmark choices, source details, paging, and **Add this conversation**. Add previews the current conversation title; **Save conversation reference** explicitly saves that title and session reference with empty note and tags. It does not generate annotations or copy messages. Use a metadata command or the editor when you want notes and tags.
 
-Both return `items`, `has_more`, and `window: {limit, truncated}`. Search covers only
-the recent 1,000 session choices or 500 eligible assistant rows in the selected session;
-response search matches previews, not a full transcript. Page size is 1–100 (default 30),
-query length is at most 200, and offsets stop at the corresponding window size.
-The page must label that bounded scope; an empty search is not proof that older sources
-do not exist. Missing or unsafe native stores fail explicitly rather than appearing empty.
+Native panels require the host's Telegram handler support and the operator-owned Bookmarks policy. They expire after ten minutes and are bound to the requesting user, chat or topic, session, and profile. Open `/bookmarks` again after expiry or a session change. An unconfirmed save or transport result needs inspection before retry, not an automatic duplicate request.
 
-Previews are read only on explicit chooser requests, are not stored in bookmarks, and
-never include prompt/system/tool rows or dedicated reasoning payloads. Unsupported or
-oversized rich content may be omitted. Choosing a source does not itself save a bookmark.
-Manual exact references and editing metadata for old/pruned sources remain supported;
-legacy message references are not restricted retroactively to chooser-visible responses.
-See [Technical guide](TECHNICAL.md#read-only-source-boundary) for exact privacy and bounds.
+[Configure Telegram ownership](INSTALLATION.md#configure-native-telegram-panels).
 
-## Manual AI draft (not a slash command)
+## Save the current conversation
 
-In Save bookmark, select an assistant response and click **Generate details**. This
-explicit click uses bounded prior context through the host’s stateless model API and
-fills Title, Note and Tags for review, without saving or injecting a live chat turn.
-**Context** offers 5, 10, 20 or 50 previous exchanges, defaults to 10, and persists
-per profile on selection. The API still accepts integers 0–100; nothing after the
-response is sent. The separate `/bookmark` current-agent save behavior is unchanged.
-
-- `GET` / `PUT /api/plugins/conversation-bookmarks/generation/settings`: read/write
-  `{ "previous_exchanges": 10 }` in the already-bound profile.
-- `POST /api/plugins/conversation-bookmarks/generation/draft`: supply exact
-  `{ "session_id": "example-session-001", "message_id": 42 }`; returns `draft` and
-  `context` count/truncation metadata, not a saved record.
-
-All routes use native authentication. Context is read-only/transient; the AI draft
-becomes bookmark metadata only after explicit Save. See the [technical contract](TECHNICAL.md#manual-ai-draft).
-
-## Menu and `/help`: verified host behavior, not a custom menu
-
-The plugin declares `provides_commands: [bookmark]` and uses public
-`ctx.register_command` with description, optional-leading `args_hint`, and explicit
-`argument_mode="text"`. It does not publish Bot API menus, replace `/help`, register
-duplicate commands, patch core code or enable itself.
-
-The canonical Telegram menu reads this native registry. Plugin menu descriptions
-are capped at **40 characters**, so this entry stays concise and untruncated:
-**Save this chat; /bookmark help**. Selecting it sends bare `/bookmark`, which
-requests a save; type `/bookmark help` for non-saving syntax help. The menu does
-not append the argument hint. Optional-leading `[` keeps the command eligible;
-the host excludes plugin hints beginning with required `<`.
-
-**Official Hermes v0.22.5 limitation:** native gateway `/help` and `/commands`
-render built-ins and skills, but omit plugin commands entirely—not just their
-argument hints. Registry metadata cannot make `/bookmark` appear there on that
-host. `/bookmark help` is the supported syntax path. The global `/help` requirement
-remains an upstream host gap; no plugin-owned replacement is provided.
-
-## Operator setup (never applied automatically)
-
-1. Install and enable the backend plugin in the profile used by the intended
-   Telegram gateway. A Desktop-only installation is insufficient. Verify
-   `hermes plugins list` there and ensure the resident gateway actually loads the
-   registration; changing files or running a local menu probe does not do this.
-2. Merge priorities into that profile's configuration through supported Hermes
-   configuration editing, preserving existing values. Example for Bookmarks alone:
-
-   ```yaml
-   platforms:
-     telegram:
-       extra:
-         command_menu:
-           max_commands: 60
-           priority_mode: prepend
-           priority: [help, new, stop, bookmark]
-   ```
-
-   If Delivery Shelf is independently installed, add `shelf` too. Priorities order
-   candidates before the cap; they are not an allowlist. Preserve safety controls
-   and existing priorities. `append` does not outrank the host's default built-in
-   priorities. Default cap: 60; supported configured bounds: 1–100. The pinned
-   v0.22.5 fixture's built-ins displace Bookmarks at the default cap. Native
-   registration alone therefore does **not** guarantee menu visibility.
-3. Allow the authorized gateway to load/reload and normally register the menu;
-   restart only when separately authorized and necessary for resident code.
-   `/reload-skills` does not reload plugins. Native force rediscovery disposes and
-   replaces command registrations; targeted unload removes them. Config disabling
-   alone leaves resident commands until host reconciliation/reload. Local registry
-   changes do not prove remote Telegram menu publication.
-4. The host publishes default, all-private-chat and all-group-chat scopes after
-   connection and lazily registers forum **parent-chat** scopes. A narrower chat or
-   language scope can override broader menus. Host fingerprints include language
-   and payload; changed fingerprints clear cached forum registrations for later
-   refresh. Telegram client caching is separate. An authorized operator must verify
-   bot identity and read back the applicable scope/language, then check actual
-   inbound dispatch. A generated menu is not live proof. This plugin neither reads
-   tokens nor refreshes scopes itself.
-
-## Reproduce offline
-
-`tests/native_command_discovery.py` runs inside `scripts/verify.sh`; no companion
-checkout is required. It uses disposable fictional homes and a read-only host,
-without bot/model calls, gateway startup or production configuration.
-
-```sh
-HERMES_SOURCE=/path/to/hermes-agent python tests/native_command_discovery.py
-# Optional combined check; Shelf remains an independent plugin:
-HERMES_SOURCE=/path/to/hermes-agent python tests/native_command_discovery.py \
-  --companion /path/to/hermes-delivery-shelf
+```text
+/bookmark
+/bookmark Friday launch decision #launch, planning
+/bookmark Friday launch decision #launch, planning --description "Friday stays; scope is reduced."
+/bookmark help
 ```
 
-Coverage: actual PluginManager loading, registry metadata, canonical menu defaults,
-cap/priority displacement, prepend versus append, configured bounds, native gateway
-`/help` and `/commands`, plugin syntax dispatch without source context, force reload,
-targeted unload, companion retention and config-disable reconciliation. The probe
-records host revision/source hashes and checks no catalog DB was written. The known
-v0.22.5 global-help omission is asserted explicitly; a future upstream fix requires
-updating the assertion and documentation, not hiding the change.
+| Form | Meaning |
+| --- | --- |
+| `/bookmark` | Request a bookmark of the current native conversation, with missing metadata completed by the current agent. |
+| `/bookmark [title] [#tags] [--description "text"]` | Supply some or all save metadata. |
+| `/bookmark help` | Show syntax without saving. |
 
-This is not live Telegram acceptance: menu publication, exact scope readback and
-real inbound commands still need separately authorized verification.
+Bare `/bookmark` preserves its legacy save meaning. It is not a browsing command. Use **Saved → Bookmarks** to browse, select a response, or manage saved annotations.
+
+The host must supply the actual current native session. The plugin does not guess from the newest conversation or another focused chat. Start or resume the intended conversation before saving.
+
+The slash command saves the entire-conversation reference. To identify one assistant response, use the collection editor or a tool with the exact message reference.
+
+## Supply metadata
+
+- The title needs no quotes.
+- A whitespace-delimited `#` starts the tag list. Separate tags with commas.
+- `C#` remains part of a title when no whitespace-delimited tag marker occurs.
+- Supply `--description` once, with a quoted value.
+- Description is stored as the bookmark's **Note**.
+
+For example:
+
+```text
+/bookmark Retry policy explanation #engineering, reference --description "Why retries stop after the deadline."
+```
+
+All three metadata fields are supplied, so this saves directly without a model turn. A deliberately empty description uses `--description ""`.
+
+Titles must contain 1–160 printable characters. Notes accept up to 4,000 characters. At most 20 tags are allowed, each 1–40 printable characters. Tag boundaries are trimmed, and case-insensitive duplicates keep their first spelling.
+
+Use the editor or tools for tags with literal commas, an explicit empty tag list, or titles containing reserved command syntax. In the editor, tags use one line per tag rather than commas.
+
+## Complete missing details with the current agent
+
+If title, tags, or description is omitted, the command requests one current-session agent handoff. The agent is instructed to fill only the missing fields, preserve supplied values, save, and verify the returned bookmark through search.
+
+This is different from **Generate details** in the Add form:
+
+| Workflow | Context | Persistence |
+| --- | --- | --- |
+| Assisted `/bookmark` | Context already available to the current agent. | Explicit request to complete and save. |
+| Editor **Generate details** | Selected response and bounded earlier exchanges. | Editable draft only. Save remains separate. |
+
+Gateway-assisted saves require explicit per-plugin permission on a host that supports the handoff:
+
+```sh
+hermes config set plugins.entries.conversation-bookmarks.allow_gateway_injection true
+```
+
+Run the command for the intended profile. The plugin never grants this permission itself. If the handoff is unsupported, denied, or unavailable, the command reports that it did not perform a save. Supply all metadata or use the collection editor instead.
+
+Queue acceptance is not completion. Wait for the agent's verified saved confirmation; inspect the collection before repeating a request with an uncertain outcome. The save endpoint does not promise duplicate suppression for repeated bookmark requests.
+
+## Shared conversations
+
+A bookmark belongs to the backend profile, not a private per-user collection inside a shared group. In a group or topic, the reference is the host-routed session, which may be shared. Use a private chat for private context.
+
+There is no `--file` attachment syntax. Bookmarks stores source references and annotations. Use Delivery Shelf for delivered files.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `conversation_bookmark_save` | Save an explicitly requested conversation reference and annotations. |
+| `conversation_bookmark_search` | Search saved titles, notes, and tags. |
+| `conversation_bookmark_update` | Replace complete metadata using the current revision. |
+| `conversation_bookmark_delete` | Remove explicitly selected bookmark metadata using the current revision. |
+
+Omitting `session_id` is valid only when reliable native invocation context supplies it. An explicit malformed or empty source must not be repaired into another reference.
+
+Tools do not back up transcripts, infer memory, or attach files. The assistant must search and read back the returned bookmark before confirming a save. For schemas and routes, see [Technical reference](TECHNICAL.md).
+
+## Discover commands
+
+Use `/bookmark help` for plugin-owned syntax. Global `/help`, `/commands`, and Telegram command-menu visibility depend on the Hermes host and its menu limits. Absence from a global menu does not prove the plugin command is unregistered.
+
+See the current [Hermes plugin documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins) for host command and permission behavior.

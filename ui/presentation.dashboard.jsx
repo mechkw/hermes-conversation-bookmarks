@@ -2,6 +2,9 @@ import React,{useId,useState} from 'react';
 const SDK=window.__HERMES_PLUGIN_SDK__;
 const C=SDK.components;
 export const Input=C.Input,DialogFooter=C.DialogFooter;
+export function Checkbox({checked,onCheckedChange,...props}){return <input type="checkbox" checked={checked} onChange={e=>onCheckedChange(e.target.checked)} {...props}/>;}
+export function Switch({checked,onCheckedChange,...props}){return <input type="checkbox" role="switch" checked={checked} onChange={e=>onCheckedChange(e.target.checked)} {...props}/>;}
+export function IconButton({icon,label,...props}){const glyph={refresh:'↻',clear:'×','settings-gear':'⚙','clear-all':'×',close:'×',copy:'⧉'}[icon]||'⋯';return <Hint label={label} name={label} disabled={props.disabled}><Button aria-label={label} {...props}><span aria-hidden="true">{glyph}</span></Button></Hint>;}
 export function Button({variant='secondary',type='button',loading,disabled,children,...props}){
  return <C.Button {...props} type={type} size="sm" destructive={variant==='destructive'} ghost={['ghost','text','chip'].includes(variant)} outlined={variant==='secondary'} disabled={disabled||loading} aria-busy={loading||undefined}>{children}</C.Button>;
 }

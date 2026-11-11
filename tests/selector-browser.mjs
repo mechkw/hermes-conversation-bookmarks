@@ -106,7 +106,7 @@ export async function selectorCases(page,adapter,api,sourceBank,proof){
  const old=await api('conversation-bookmarks','/entries',{method:'POST',body:JSON.stringify({title:'Old reference',session_id:'pruned-session',message_id:44,note:'My original note'})});
  sourceBank.prune();
  await page.getByRole('button',{name:'Refresh',exact:true}).click();
- await page.getByRole('button',{name:'Old reference',exact:true}).click();await editor().getByRole('button',{name:'Edit bookmark'}).click();
+ await page.getByRole('button',{name:'Old reference',exact:true}).click();await page.getByRole('button',{name:'Edit bookmark'}).click();
  mode='normal';await editor().getByLabel('Search conversations',{exact:true}).fill('none');await editor().getByLabel('Search responses',{exact:true}).fill('none');
  await expect(editor().getByText('No matches',{exact:true})).toHaveCount(2);
  await expect(editor().getByRole('combobox',{name:'Choose a conversation',exact:true})).toContainText('Saved conversation');

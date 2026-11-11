@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='cbc-',dir=os.environ.get('TMPDIR')) as 
     doctor=doctor_plugin(root)
     assert not doctor.findings,doctor.findings
     assert set(doctor.registered_tools)=={'conversation_bookmark_save','conversation_bookmark_search','conversation_bookmark_update','conversation_bookmark_delete'},doctor
-    print('DOCTOR: 4 native tools registered; zero errors/warnings; no hooks/providers.')
+    print('DOCTOR: 4 native tools registered; zero errors/warnings; lifecycle hooks and optional Telegram panels.')
     report=validate_plugin_dir(root)
     for name,passed,detail in report.checks:
         print(f'{"PASS" if passed else "FAIL"}: {name}: {detail}')
