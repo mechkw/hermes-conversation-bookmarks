@@ -33,6 +33,9 @@ SOURCE_SESSION_WINDOW = 1000
 SOURCE_RESPONSE_WINDOW = 500
 SOURCE_CONTENT_BYTES = 16384
 SOURCE_PREVIEW_CHARS = 350
+SOURCE_EXCERPT_CHARS = 1200
+TAG_SUMMARY_LIMIT = 200
+SESSION_MARK_LIMIT = 500
 SESSION_ID_PATTERN = r"^[A-Za-z0-9_.:-]+$"
 
 # Mirror THINK_TAG_NAMES in agent/think_scrubber.py and the tool/function/arg
@@ -926,6 +929,53 @@ class SourceAdapter:
         return source_page(items, q, limit, offset, SOURCE_RESPONSE_WINDOW,
                            len(rows) > SOURCE_RESPONSE_WINDOW, ("preview",))
 
+    def context(self, session_id, message_id=None):
+        """Ephemeral inspector context for one saved reference; never stored.
+
+        Uses the chooser's read-only fences and visibility rules: a hidden,
+        foreign or unsupported source yields no context rather than an error.
+        The excerpt is a bounded projection of one visible assistant response.
+        """
+        empty = {"conversation": None, "response": None}
+        try:
+            with self.chooser_connection() as conn:
+                self.chooser_schema(conn, {
+                    "sessions": ("id", "profile_name", "title", "source", "started_at", "ended_at", "last_activity_at", "hidden"),
+                    "messages": ("id", "session_id", "role", "content", "timestamp", "display_kind", "observed", "_compressed_summary"),
+                })
+                row = conn.execute("""
+                    SELECT substr(title,1,160) AS title, substr(source,1,64) AS source,
+                        (SELECT MAX(value) FROM (
+                            SELECT source_epoch(s.started_at) AS value UNION ALL
+                            SELECT source_epoch(s.ended_at) UNION ALL
+                            SELECT source_epoch(s.last_activity_at)
+                        )) AS updated_at
+                    FROM sessions s WHERE id=? AND (profile_name IS NULL OR profile_name='' OR profile_name=?)
+                        AND COALESCE(hidden,0)=0
+                """, (session_id, profile_name(self.home))).fetchone()
+                if row is None:
+                    return empty
+                source = source_label(row["source"], 64)
+                result = {"conversation": {"title": source_label(row["title"], 160), "source": source,
+                                           "updated_at": row["updated_at"]}, "response": None}
+                if message_id is None:
+                    return result
+                message = conn.execute("""
+                    SELECT source_epoch(timestamp) AS created_at,
+                        CASE WHEN typeof(content)='text' AND length(CAST(content AS BLOB))<=?
+                             THEN content ELSE NULL END AS content
+                    FROM messages WHERE id=? AND session_id=? AND role='assistant'
+                        AND COALESCE(display_kind,'')='' AND COALESCE(observed,0)=0
+                        AND COALESCE(_compressed_summary,0)=0
+                """, (SOURCE_CONTENT_BYTES, message_id, session_id)).fetchone()
+            if message is not None:
+                excerpt = source_preview(message["content"], limit=SOURCE_EXCERPT_CHARS)
+                if excerpt:
+                    result["response"] = {"excerpt": excerpt, "created_at": message["created_at"]}
+            return result
+        except HTTPException:
+            return empty
+
     def require(self, session_id, message_id):
         state = self.availability(session_id, message_id)
         if state != "available":
@@ -977,8 +1027,15 @@ class Store:
             raise HTTPException(404, "Bookmark not found")
         return self.decode(row)
 
-    def search(self, q="", tag="", sort="newest", limit=50, offset=0):
+    def search(self, q="", tag="", sort="newest", limit=50, offset=0, kind="all", session_id=""):
         params, clauses = [], []
+        if kind == "conversation":
+            clauses.append("json_extract(payload,'$.message_id') IS NULL")
+        elif kind == "response":
+            clauses.append("json_extract(payload,'$.message_id') IS NOT NULL")
+        if session_id:
+            clauses.append("json_extract(payload,'$.session_id')=?")
+            params.append(session_id)
         if q:
             clauses.append("(instr(lower(json_extract(payload,'$.title') || ' ' || json_extract(payload,'$.note')),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(payload,'$.tags') WHERE instr(tag_casefold(value),tag_casefold(?))>0))")
             params.extend([q,q])
@@ -991,6 +1048,26 @@ class Store:
             total = conn.execute("SELECT count(*) FROM entries" + where, params).fetchone()[0]
             rows = conn.execute("SELECT * FROM entries" + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", [*params,limit,offset]).fetchall()
         return {"items":[self.decode(row) for row in rows],"total":total,"limit":limit,"offset":offset}
+
+    def tags(self, limit=50):
+        """Tag usage across the catalog, casefold-merged like the validator."""
+        with self.connect() as conn:
+            rows = conn.execute("SELECT value FROM entries, json_each(entries.payload,'$.tags') ORDER BY entries.created, entries.id").fetchall()
+        merged = {}
+        for (value,) in rows:
+            if isinstance(value, str):
+                item = merged.setdefault(value.casefold(), {"tag": value, "count": 0})
+                item["count"] += 1
+        items = sorted(merged.values(), key=lambda item: (-item["count"], item["tag"].casefold()))
+        return {"items": items[:limit], "total": len(items)}
+
+    def marks(self):
+        """Which conversations have bookmarks: identifiers and counts only."""
+        with self.connect() as conn:
+            rows = conn.execute("""SELECT json_extract(payload,'$.session_id') AS session_id, count(*) AS count
+                FROM entries GROUP BY session_id ORDER BY max(created) DESC LIMIT ?""", (SESSION_MARK_LIMIT + 1,)).fetchall()
+        return {"sessions": {row["session_id"]: row["count"] for row in rows[:SESSION_MARK_LIMIT]},
+                "truncated": len(rows) > SESSION_MARK_LIMIT}
 
     def create(self, entry, authorize_commit=None):
         if authorize_commit is None:
@@ -1147,8 +1224,20 @@ def status(store: Store = Depends(request_store)):
 
 
 @router.get("/entries")
-def entries(q: str = Query("",max_length=200), tag: str = Query("",max_length=40), sort: Literal["newest","oldest","title"] = "newest", limit: int = Query(50,ge=1,le=100), offset: int = Query(0,ge=0,le=1000000), store: Store = Depends(request_store)):
-    return store.search(q,tag,sort,limit,offset)
+def entries(q: str = Query("",max_length=200), tag: str = Query("",max_length=40), sort: Literal["newest","oldest","title"] = "newest", limit: int = Query(50,ge=1,le=100), offset: int = Query(0,ge=0,le=1000000),
+            kind: Literal["all","conversation","response"] = "all",
+            session_id: str = Query("", max_length=160, pattern=r"^[A-Za-z0-9_.:-]*$"), store: Store = Depends(request_store)):
+    return store.search(q,tag,sort,limit,offset,kind,session_id)
+
+
+@router.get("/tags")
+def tag_summary(limit: int = Query(50, ge=1, le=TAG_SUMMARY_LIMIT), store: Store = Depends(request_store)):
+    return store.tags(limit)
+
+
+@router.get("/marks")
+def session_marks(store: Store = Depends(request_store)):
+    return store.marks()
 
 
 @router.get("/settings")
@@ -1181,6 +1270,12 @@ def create(entry: EntryInput, store: Store = Depends(request_store)):
 @router.get("/entries/{entry_id}")
 def get_entry(entry_id: str, store: Store = Depends(request_store)):
     return store.get(entry_id)
+
+
+@router.get("/entries/{entry_id}/context")
+def entry_context(entry_id: str, store: Store = Depends(request_store)):
+    entry = store.get(entry_id)
+    return {"source_status": entry["source_status"], **store.source.context(entry["session_id"], entry["message_id"])}
 
 
 @router.put("/entries/{entry_id}")
