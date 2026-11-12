@@ -21,7 +21,7 @@ export function TagInput({ id, tags, onChange, suggestions = [], disabled }) {
       <div className="cb-taginput" data-disabled={disabled || undefined} onClick={event => { if (event.target === event.currentTarget) event.currentTarget.querySelector('input')?.focus(); }}>
         {tags.map(tag => (
           <span className="cb-chip" key={tag}>
-            #{tag}
+            <span className="cb-chip-text">#{tag}</span>
             <button type="button" className="cb-chip-remove" aria-label={`Remove tag ${tag}`} disabled={disabled} onClick={() => onChange(tags.filter(item => item !== tag))}>
               <Icon name="close" size="0.7rem" />
             </button>

@@ -165,6 +165,7 @@ export async function collectionCases(page, adapter, api, proof, sourceBank) {
     expect(order.indexOf(set[1].title)).toBeLessThan(order.indexOf(set[0].title));
     await page.getByRole('button', {name: /^Sort:/}).click();
     await page.getByRole('menuitem', {name: 'Newest first', exact: true}).click();
+    await expect.poll(async () => (await page.locator('.cb-row-title').allTextContents())[0]).toBe(set[2].title);
     // Stored text is always rendered as text.
     await expect(row(page, set[2].title)).toBeVisible();
     expect(await page.evaluate(() => window.evil)).toBeUndefined();
@@ -403,7 +404,7 @@ export async function editorCases(page, adapter, api, proof) {
     // Tags are chips; commas and non-ASCII text stay inside one tag; duplicates fold.
     const tags = editor().getByRole('textbox', {name: 'Tags'});
     for (const tag of ['design, decisions', 'say "hello"', 'café 日本語', 'CAFÉ 日本語']) { await tags.fill(tag); await tags.press('Enter'); }
-    await expect(editor().locator('.cb-chip')).toHaveText(['#design, decisions', '#say "hello"', '#café 日本語']);
+    await expect(editor().locator('.cb-chip-text')).toHaveText(['#design, decisions', '#say "hello"', '#café 日本語']);
     await expect(editor()).toBeVisible();
     await tags.press('Backspace');
     await expect(editor().locator('.cb-chip')).toHaveCount(2);
@@ -556,20 +557,20 @@ export async function generationCases(page, adapter, api, base) {
     // Opening, choosing and changing scope never call the model or write a setting.
     await start();
     await expect(draft()).toBeDisabled();
-    await expect(context()).toHaveText('10');
+    await expect(context()).toHaveAccessibleName('Context: 10 previous exchanges');
     await chooseReply();
     await expect(draft()).toBeEnabled();
     expect(calls).toBe(0);
     expect(settingWrites).toHaveLength(0);
     // The context preset is saved when chosen and survives reopening.
     await context().click();
-    await expect(page.getByRole('menuitem')).toHaveText(['5 previous exchanges', '10 previous exchanges', '20 previous exchanges', '50 previous exchanges']);
+    await expect(page.getByRole('menuitem')).toHaveText([/^5 previous exchanges/, /^10 previous exchanges/, /^20 previous exchanges/, /^50 previous exchanges/]);
     await page.keyboard.press('Escape');
     await pick(5);
     await expect.poll(settings).toBe(5);
     await cancel();
     await start();
-    await expect(context()).toHaveText('5');
+    await expect(context()).toHaveAccessibleName('Context: 5 previous exchanges');
     expect(settingWrites).toEqual([{previous_exchanges: 5}]);
     await chooseReply();
     // A draft fills the form for review. It replaces fields; it does not save.
@@ -577,7 +578,7 @@ export async function generationCases(page, adapter, api, base) {
     await draft().click();
     await expect(editor().getByLabel('Title', {exact: true})).toHaveValue('Fictional reviewed draft');
     await expect(editor().getByLabel('Note', {exact: true})).toHaveValue('Fictional review note');
-    await expect(editor().locator('.cb-chip')).toHaveText(['#drafted', '#review']);
+    await expect(editor().locator('.cb-chip-text')).toHaveText(['#drafted', '#review']);
     await expect(editor().getByRole('status')).toContainText('Draft ready to review. Earlier context was shortened.');
     expect(calls).toBe(1);
     expect((await api(id, '/entries')).total).toBe(count);
@@ -618,7 +619,7 @@ export async function generationCases(page, adapter, api, base) {
     await page.route(settingRoute, async intercepted => (refuse && intercepted.request().method() === 'PUT' ? intercepted.fulfill({status: 503, json: {detail: 'Fictional setting unavailable'}}) : intercepted.continue()));
     await pick(20);
     await expect(editor().getByRole('alert')).toContainText('Fictional setting unavailable');
-    await expect(context()).toHaveText('20');
+    await expect(context()).toHaveAccessibleName('Context: 20 previous exchanges');
     await chooseReply();
     await expect(draft()).toBeDisabled();
     refuse = false;
@@ -632,7 +633,7 @@ export async function generationCases(page, adapter, api, base) {
       await api(id, '/generation/settings', {method: 'PUT', body: JSON.stringify({previous_exchanges: legacy})});
       const writes = settingWrites.length, before = calls;
       await start();
-      await expect(context()).toHaveText('10');
+      await expect(context()).toHaveAccessibleName('Context: 10 previous exchanges');
       expect(settingWrites).toHaveLength(writes);
       expect(await settings()).toBe(legacy);
       await chooseReply();
