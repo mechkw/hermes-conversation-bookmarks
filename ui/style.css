@@ -54,8 +54,8 @@
 .cb-row-checked:not(.cb-row-active){background:var(--cb-fill-soft);}
 .cb-row-lead{position:relative;display:grid;place-items:center;width:20px;height:20px;}
 .cb-row-kind,.cb-row-check{grid-area:1/1;display:grid;place-items:center;transition:opacity .1s;}
-.cb-row-kind{color:var(--cb-text-3);}
-.cb-row-check{opacity:0;}
+.cb-row-kind{color:var(--cb-text-3);pointer-events:none;}
+.cb-row-check{position:relative;z-index:1;opacity:0;}
 .cb-row:hover .cb-row-check,.cb-row:focus-within .cb-row-check,.cb-row-checked .cb-row-check,.cb-row-selecting .cb-row-check{opacity:1;}
 .cb-row:hover .cb-row-kind,.cb-row:focus-within .cb-row-kind,.cb-row-checked .cb-row-kind,.cb-row-selecting .cb-row-kind{opacity:0;}
 .cb-row-main{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;min-width:0;}

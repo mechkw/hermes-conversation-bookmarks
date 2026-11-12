@@ -175,6 +175,8 @@ export function BookmarkEditor({ api, entry, preset, restoreFocus, close, onSave
       const body = { ...Object.fromEntries(fields.map(key => [key, draft[key]])), title: draft.title.trim() };
       if (editing) body.revision = entry.revision;
       const saved = await api(editing ? `/entries/${entry.id}` : '/entries', { method: editing ? 'PUT' : 'POST', body });
+      // A save already sent may land after this editor is gone; ask for nothing more.
+      if (token !== life.current) return;
       // Read back what the store holds before telling anyone it was saved.
       const stored = await api(`/entries/${saved.id}`);
       if (token === life.current) onSaved(stored);

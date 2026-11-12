@@ -57,6 +57,8 @@ export function Bookmarks({ api, signals, session = '', onSessionCleared }) {
   const root = useRef(null);
   const search = useRef(null);
   const lastTrigger = useRef(null);
+  const returnTo = useRef(null);
+  const activeRef = useRef(null);
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -112,6 +114,7 @@ export function Bookmarks({ api, signals, session = '', onSessionCleared }) {
   useEffect(() => signals?.changes.subscribe(() => setRefresh(n => n + 1)), [signals]);
   useEffect(() => { setFilters(f => (f.session === session ? f : { ...initialFilters(session) })); setPages(1); }, [session]);
 
+  activeRef.current = activeId;
   const items = data?.items || [];
   const total = data?.total || 0;
   const active = useMemo(() => {
@@ -150,16 +153,24 @@ export function Bookmarks({ api, signals, session = '', onSessionCleared }) {
     setDetail(null);
     setContext(null);
     setActionError('');
-    requestAnimationFrame(() => root.current?.querySelector(`[data-entry="${id}"] .cb-row-title`)?.focus());
+    returnTo.current = id;
+  }, [activeId]);
+  // Hand focus back to the row once the list is on screen again (it is hidden beside the inspector on narrow layouts).
+  useEffect(() => {
+    if (activeId || !returnTo.current) return;
+    const target = root.current?.querySelector(`[data-entry="${returnTo.current}"] .cb-row-title`);
+    returnTo.current = null;
+    if (target && !root.current.querySelector('input:focus')) target.focus();
   }, [activeId]);
 
   // A bookmark that left the list (removed, filtered away) leaves the inspector too.
+  // Judged only when a load lands, so a bookmark saved a moment ago is not dismissed before it is listed.
   useEffect(() => {
-    if (activeId && data && !loading && !items.some(item => item.id === activeId)) {
+    if (data && !data.items.some(item => item.id === activeRef.current)) {
       detailSerial.current++;
       setActiveId(null); setDetail(null); setContext(null);
     }
-  }, [activeId, data, items, loading]);
+  }, [data]);
 
   // ── Filters and selection ──────────────────────────────────────────────────
   const filter = useCallback((key, value) => {

@@ -20,12 +20,10 @@ export function BookmarkRow({
       className={cx('cb-row', active && 'cb-row-active', checked && 'cb-row-checked', selecting && 'cb-row-selecting')}
       data-entry={entry.id}
       onClick={event => { if (!interactive(event.target)) onInspect(); }}
-      onDoubleClick={event => { if (onOpen && !interactive(event.target)) onOpen(); }}
+      onDoubleClick={event => { if (onOpen && (event.target.closest('.cb-row-title') || !interactive(event.target))) onOpen(); }}
     >
       <div className="cb-row-lead">
-        <Tip label={kindLabel(entry) + ' bookmark'}>
-          <span className="cb-row-kind"><Icon name={isResponse(entry) ? 'comment' : 'comment-discussion'} /></span>
-        </Tip>
+        <span className="cb-row-kind" title={kindLabel(entry) + ' bookmark'}><Icon name={isResponse(entry) ? 'comment' : 'comment-discussion'} /></span>
         <span className="cb-row-check">
           <Checkbox
             aria-label={`Select bookmark ${entry.title}`}
