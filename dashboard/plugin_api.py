@@ -27,7 +27,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PLUGIN_ID = "conversation-bookmarks"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 MAX_REVISION = 9007199254740991
 SOURCE_SESSION_WINDOW = 1000
 SOURCE_RESPONSE_WINDOW = 500

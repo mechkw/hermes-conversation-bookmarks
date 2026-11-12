@@ -61,6 +61,12 @@ export function Bookmarks({ api, signals, session = '', onSessionCleared }) {
   const activeRef = useRef(null);
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  // The inline notice (hosts without toasts) steps aside on its own.
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => setNotice(''), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const say = useCallback(message => {
     if (api.notify) api.notify(message);

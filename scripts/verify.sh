@@ -15,4 +15,15 @@ mkdir -p "$TMPDIR"
 "${PYTHON:-python}" tests/native_telegram.py
 "${PYTHON:-python}" tests/native_command_discovery.py
 npm run build
+npm run test:contract
+# The host's own admission lint for desktop plugins: no forbidden constructs, no review cues.
+"${PYTHON:-python}" - <<'PY'
+from pathlib import Path
+from hermes_cli import plugin_validate_desktop as lint
+source = Path('desktop/plugin.js').read_text()
+problems = lint.desktop_surface_hits(Path('.')) + lint.desktop_surface_findings(source) + lint.desktop_review_findings(source)
+if problems:
+    raise SystemExit(f'Desktop surface lint: {problems}')
+print('PASS host desktop-surface lint')
+PY
 npm run test:browser
