@@ -39,6 +39,7 @@ SOURCE_CONTENT_BYTES = 16384
 SOURCE_PREVIEW_CHARS = 350
 SOURCE_EXCERPT_CHARS = 1200
 SOURCE_OPENING_CHARS = 120
+SOURCE_READ_SECONDS = 4
 TAG_SUMMARY_LIMIT = 200
 SESSION_MARK_LIMIT = 500
 SESSION_ID_PATTERN = r"^[A-Za-z0-9_.:-]+$"
@@ -890,12 +891,15 @@ class SourceAdapter:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA query_only=ON")
             conn.execute("PRAGMA trusted_schema=OFF")
-            deadline, ticks = time.monotonic() + 1, 0
+            # Same two-million-step bound as before, checked in larger strides: every
+            # check is a Python callback that must win the interpreter lock, and on a
+            # busy host those waits (not the read) used to exhaust a one-second budget.
+            deadline, ticks = time.monotonic() + SOURCE_READ_SECONDS, 0
             def budget():
                 nonlocal ticks
                 ticks += 1
-                return ticks > 2000 or time.monotonic() > deadline
-            conn.set_progress_handler(budget, 1000)
+                return ticks > 100 or time.monotonic() > deadline
+            conn.set_progress_handler(budget, 20000)
             conn.create_function("source_epoch", 1, source_timestamp, deterministic=True)
             conn.execute("BEGIN")
             yield conn
@@ -928,22 +932,23 @@ class SourceAdapter:
             needle = q.casefold().strip()
             conn.create_function("source_fold", 1, lambda value: value.casefold() if isinstance(value, str) else "", deterministic=True)
             people = ",".join("?" * len(_HUMAN_SOURCES))
+            matching = ("""AND (instr(source_fold(substr(title,1,160)),?) OR instr(source_fold(id),?)
+                         OR instr(source_fold(substr(source,1,64)),?))""" if needle else "")
             rows = conn.execute(f"""
                 SELECT id, substr(title,1,160) AS title, substr(source,1,64) AS source,
                     (SELECT MAX(value) FROM (
-                        SELECT source_epoch(s.started_at) AS value UNION ALL
-                        SELECT source_epoch(s.ended_at) UNION ALL
-                        SELECT source_epoch(s.last_activity_at) UNION ALL
+                        SELECT CASE WHEN typeof(s.started_at) IN ('integer','real') AND s.started_at BETWEEN 0 AND 253402300799 THEN s.started_at END AS value UNION ALL
+                        SELECT CASE WHEN typeof(s.ended_at) IN ('integer','real') AND s.ended_at BETWEEN 0 AND 253402300799 THEN s.ended_at END UNION ALL
+                        SELECT CASE WHEN typeof(s.last_activity_at) IN ('integer','real') AND s.last_activity_at BETWEEN 0 AND 253402300799 THEN s.last_activity_at END UNION ALL
                         SELECT MAX(m.timestamp) FROM messages m WHERE m.session_id=s.id
                             AND typeof(m.timestamp) IN ('integer','real')
                             AND m.timestamp BETWEEN 0 AND 253402300799
                     )) AS updated_at
                 FROM sessions s WHERE (profile_name IS NULL OR profile_name='' OR profile_name=?)
                     AND COALESCE(hidden,0)=0
-                    AND (?='' OR instr(source_fold(substr(title,1,160)),?) OR instr(source_fold(id),?)
-                         OR instr(source_fold(substr(source,1,64)),?))
+                    {matching}
                 ORDER BY CASE WHEN source IN ({people}) THEN 0 ELSE 1 END, updated_at DESC, id DESC LIMIT ?
-            """, (profile_name(self.home), needle, needle, needle, needle, *sorted(_HUMAN_SOURCES),
+            """, (profile_name(self.home), *([needle] * 3 if needle else []), *sorted(_HUMAN_SOURCES),
                   SOURCE_SESSION_WINDOW + 1)).fetchall()
         items = []
         for row in rows[:SOURCE_SESSION_WINDOW]:
