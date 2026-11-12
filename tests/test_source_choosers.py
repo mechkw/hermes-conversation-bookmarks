@@ -306,7 +306,10 @@ class SourceChooserTests(unittest.TestCase):
         result = self.client.get('/sources/sessions', params={'offset': 999}).json()
         self.assertEqual([item['id'] for item in result['items']], ['recent-1002'])
         self.assertIs(result['has_more'], False)
-        self.assertEqual(self.client.get('/sources/sessions', params={'q': 'Alpha'}).json()['items'], [])
+        # Search runs before the window is cut, so an older conversation stays reachable.
+        found = self.client.get('/sources/sessions', params={'q': 'Alpha'}).json()
+        self.assertEqual([item['id'] for item in found['items']], ['fictional-a'])
+        self.assertEqual(found['window'], {'limit': 1000, 'truncated': False})
 
     def test_missing_corrupt_and_incomplete_schema_fail_closed(self):
         path = self.home / 'state.db'

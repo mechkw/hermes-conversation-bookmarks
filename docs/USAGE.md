@@ -54,9 +54,9 @@ After saving, the new bookmark is selected in the list with its details open bes
 
 ## Draft details with AI
 
-Drafting is available for a new bookmark with **One response** selected. Whole-conversation bookmarks are written by hand.
+Drafting is available for any new bookmark, whether it points at a **Whole conversation** or **One response**.
 
-1. In **New bookmark**, choose the conversation and the response.
+1. In **New bookmark**, choose the conversation. To draft for a single reply, also choose **One response** and the response.
 2. Optionally open the number beside **Draft with AI** to choose how much earlier conversation to include: 5, 10, 20, or 50 previous exchanges. The default is 10.
 3. Select **Draft with AI**.
 4. Review the drafted title, note, and tags. Edit anything you want to change.
@@ -64,7 +64,7 @@ Drafting is available for a new bookmark with **One response** selected. Whole-c
 
 The context choice is saved for this profile when you change it. It controls drafting context, not how much conversation is backed up. No transcript is backed up.
 
-The request includes the selected assistant response, its preceding real user request, and up to the selected number of earlier exchanges. It excludes content after the selected response. An exchange is a user request and its following visible assistant replies, not a fixed number of database rows.
+For **One response**, the request includes the selected assistant response, its preceding real user request, and up to the selected number of earlier exchanges. It excludes content after the selected response. For **Whole conversation**, the request ends at the conversation's latest usable assistant response and reaches back the same number of exchanges, so the context choice decides how much of the conversation the draft sees. An exchange is a user request and its following visible assistant replies, not a fixed number of database rows.
 
 A draft replaces the title, note, and tags in the form. If you edit, or change what the bookmark points at, while a draft is being written, the editor keeps your changes and discards the late draft.
 
@@ -232,7 +232,7 @@ There is no automatic bookmarking, background transcript collector, or plugin an
 - Ordinary collection search reads saved metadata and checks source availability.
 - The conversation picker reads bounded metadata and visible assistant-response previews when you ask for choices.
 - The details pane reads one conversation title and, for a response bookmark, a bounded excerpt of that response each time you select a bookmark. It is shown, not stored.
-- **Draft with AI** sends the selected response and bounded preceding context to Hermes's configured provider.
+- **Draft with AI** sends the selected response (or, for a whole conversation, its latest response) and bounded preceding context to Hermes's configured provider.
 - Assisted `/bookmark` uses the context already available to the current Hermes agent.
 
 Those last two workflows have different context boundaries. The editor's “nothing after the selected response” rule is not a promise that an active agent's existing context excludes later material.
@@ -248,7 +248,7 @@ Ordinary package updates or uninstall do not erase saved data. Back up the bookm
 | No current native session | Start or resume the intended conversation, or choose the source in Saved. |
 | Assisted save denied or unavailable | Supply all metadata, use the editor, or review explicit handoff permission on a supported host. |
 | A queued request has no completion | Inspect Saved before retrying. Queued is not proof of a saved bookmark. |
-| Draft with AI is disabled | Choose **One response** and a response in a new bookmark, and wait for the context setting to load. |
+| Draft with AI is disabled | It is a new bookmark, a conversation is chosen, and the context setting has loaded. With **One response**, choose the response first. |
 | Drafting times out or returns invalid data | Try again, or enter details manually. The failed draft did not save a bookmark. |
 | Source does not appear in the picker | Clear its search, use **Show more**, and check that the correct profile is selected. |
 | No source preview in the details pane | The source is hidden, unsupported, or not a visible assistant response. The reference and your annotations are unaffected. |

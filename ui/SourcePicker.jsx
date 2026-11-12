@@ -48,6 +48,9 @@ function useSourceList(api, path) {
   };
 }
 
+// An untitled conversation is recognized by how it started, when the source can say.
+const optionTitle = item => (conversationTitle(item) === 'Untitled conversation' && item.preview ? `“${item.preview}”` : conversationTitle(item));
+
 /**
  * A searchable single-choice list of conversations, or of one conversation's
  * assistant responses. Choosing is one click; nothing here saves anything.
@@ -102,7 +105,7 @@ export function SourcePicker({ api, path, kind, value, onChoose, autoFocus = fal
                   className={cx('cb-option', selected && 'cb-option-on', responses && 'cb-option-response')}
                   onClick={() => onChoose(item)}
                 >
-                  <span className="cb-option-text">{responses ? item.preview || 'Assistant response' : conversationTitle(item)}</span>
+                  <span className="cb-option-text">{responses ? item.preview || 'Assistant response' : optionTitle(item)}</span>
                   <span className="cb-option-meta">
                     {!responses && item.source && <span>{sourceName(item.source)}</span>}
                     {time != null && <time title={fullDate(time)}>{shortAge(time)}</time>}
@@ -115,7 +118,7 @@ export function SourcePicker({ api, path, kind, value, onChoose, autoFocus = fal
           </>
         )}
       </div>
-      {list.window?.truncated && <p className="cb-faint cb-picker-note">Showing your {list.window.limit.toLocaleString()} most recent {noun}. Older ones are not listed.</p>}
+      {list.window?.truncated && <p className="cb-faint cb-picker-note">Showing your {list.window.limit.toLocaleString()} most recent {noun}. {responses ? 'Older ones are not listed.' : 'Search to reach older ones.'}</p>}
     </div>
   );
 }

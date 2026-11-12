@@ -162,3 +162,109 @@ class BrowseExtensionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ConversationChooserTests(BrowseExtensionTests):
+    def test_people_first_then_automated_runs_and_search_reaches_both(self):
+        with closing(sqlite3.connect(self.home / 'state.db')) as db, db:
+            db.executemany('INSERT INTO sessions(id,profile_name,title,source,last_activity_at,hidden) VALUES (?,?,?,?,?,?)',
+                           [(f'fictional-cron-{n}', 'default', None, 'cron', 1793500000 + n, 0) for n in range(40)]
+                           + [('fictional-sub', 'default', 'Fictional delegated audit', 'subagent', 1793600000, 0)])
+        items = self.client.get('/sources/sessions').json()['items']
+        self.assertEqual([item['id'] for item in items[:2]], ['fictional-a', 'fictional-b'])
+        self.assertEqual(items[2]['id'], 'fictional-sub')
+        self.assertTrue(all(item['source'] == 'cron' for item in items[3:]))
+        found = self.client.get('/sources/sessions', params={'q': 'DELEGATED'}).json()['items']
+        self.assertEqual([item['id'] for item in found], ['fictional-sub'])
+        self.assertEqual(len(self.client.get('/sources/sessions', params={'q': 'cron', 'limit': 100}).json()['items']), 40)
+
+    def test_untitled_conversation_is_labelled_by_its_first_visible_request(self):
+        with closing(sqlite3.connect(self.home / 'state.db')) as db, db:
+            db.executemany('INSERT INTO sessions(id,profile_name,title,source,last_activity_at,hidden) VALUES (?,?,?,?,?,?)', [
+                ('fictional-untitled', 'default', None, 'telegram', 1793700000, 0),
+                ('fictional-silent', 'default', '', 'desktop', 1793690000, 0)])
+            db.executemany('INSERT INTO messages(id,session_id,role,content,timestamp,display_kind,observed,_compressed_summary) VALUES (?,?,?,?,?,?,?,?)', [
+                (20, 'fictional-untitled', 'user', '[System: fictional synthetic carrier]', 1, None, 0, 0),
+                (21, 'fictional-untitled', 'user', 'Hidden fictional steer', 2, 'hidden', 0, 0),
+                (22, 'fictional-untitled', 'user', 'Plan the fictional harbor festival ' + 'detail ' * 60, 3, None, 0, 0),
+                (23, 'fictional-untitled', 'assistant', 'A fictional answer.', 4, None, 0, 0)])
+        items = {item['id']: item for item in self.client.get('/sources/sessions').json()['items']}
+        preview = items['fictional-untitled']['preview']
+        self.assertTrue(preview.startswith('Plan the fictional harbor festival'))
+        self.assertLessEqual(len(preview), api.SOURCE_OPENING_CHARS)
+        self.assertNotIn('preview', items['fictional-silent'])
+        self.assertNotIn('preview', items['fictional-a'])
+        # The line is chooser text only; saving the conversation stores no transcript.
+        self.save('Fictional festival', session_id='fictional-untitled')
+        stored = (self.home / 'plugin-data/conversation-bookmarks/bookmarks.sqlite3').read_bytes()
+        self.assertNotIn(b'harbor', stored)
+
+    def test_opening_line_is_optional_on_older_schemas(self):
+        with closing(sqlite3.connect(self.home / 'state.db')) as db, db:
+            db.execute("INSERT INTO sessions(id,profile_name,title,source,last_activity_at,hidden) VALUES ('fictional-old','default',NULL,'cli',1793800000,0)")
+            db.execute('ALTER TABLE messages DROP COLUMN display_kind')
+        response = self.client.get('/sources/sessions')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('preview', response.json()['items'][0])
+
+
+class HostPoolIsolationTests(unittest.TestCase):
+    """A host whose shared worker pool is full must not stall bookmark routes."""
+
+    def test_routes_answer_while_the_host_pool_is_exhausted(self):
+        import asyncio
+        import threading
+        import anyio.to_thread
+        import httpx
+
+        with tempfile.TemporaryDirectory(prefix='cbx-pool-', dir=os.environ.get('TMPDIR')) as temp:
+            home = Path(temp) / 'home'
+            native_source(home)
+            app = FastAPI()
+            app.include_router(api.router)
+
+            @app.get('/host-route')
+            def host_route():
+                return {'thread': threading.current_thread().name}
+
+            async def scenario():
+                release = threading.Event()
+                limiter = anyio.to_thread.current_default_thread_limiter()
+                limiter.total_tokens = 1
+                blocker = asyncio.ensure_future(anyio.to_thread.run_sync(release.wait))
+                await asyncio.sleep(0.05)
+                try:
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://plugin') as client:
+                        with self.assertRaises(TimeoutError):
+                            async with asyncio.timeout(0.5):
+                                await client.get('/host-route')
+                        async with asyncio.timeout(5):
+                            results = [await client.get(path) for path in (
+                                '/status', '/entries', '/tags', '/marks', '/settings', '/generation/settings',
+                                '/sources/sessions', '/sources/sessions/fictional-a/responses')]
+                            saved = await client.post('/entries', json={'title': 'Saved under pressure', 'session_id': 'fictional-a'})
+                        return [r.status_code for r in results], saved.status_code
+                finally:
+                    release.set()
+                    await blocker
+
+            with patch.object(api, 'bound_home', return_value=home):
+                statuses, saved = asyncio.run(scenario())
+            self.assertEqual(statuses, [200] * 8)
+            self.assertEqual(saved, 201)
+
+    def test_blocking_work_runs_on_the_plugin_pool(self):
+        import threading
+        seen = []
+        with tempfile.TemporaryDirectory(prefix='cbx-pool-', dir=os.environ.get('TMPDIR')) as temp:
+            home = Path(temp) / 'home'
+            native_source(home)
+            app = FastAPI()
+            app.include_router(api.router)
+            real = api.Store.marks
+            def marks(store):
+                seen.append(threading.current_thread().name)
+                return real(store)
+            with patch.object(api, 'bound_home', return_value=home), patch.object(api.Store, 'marks', marks), TestClient(app) as client:
+                self.assertEqual(client.get('/marks').status_code, 200)
+        self.assertTrue(seen and seen[0].startswith(api.PLUGIN_ID), seen)

@@ -545,13 +545,13 @@ export async function generationCases(page, adapter, api, base) {
   const cancel = async () => { await editor().getByRole('button', {name: 'Cancel', exact: true}).click(); await expect(editor()).toHaveCount(0); };
   const original = await settings();
   const count = (await api(id, '/entries')).total;
-  let calls = 0, release, pending = false, fail = false;
+  let calls = 0, release, pending = false, fail = false, expected = 1;
   const settingWrites = [];
   const record = request => { if (request.method() === 'PUT' && request.url().includes('/generation/settings')) settingWrites.push(request.postDataJSON()); };
   page.on('request', record);
   await page.route(route, async intercepted => {
     calls++;
-    expect(intercepted.request().postDataJSON()).toEqual({session_id: SESSION, message_id: 1});
+    expect(intercepted.request().postDataJSON()).toEqual({session_id: SESSION, message_id: expected});
     if (pending) await new Promise(resolve => { release = resolve; });
     if (fail) return intercepted.fulfill({status: 502, json: {detail: 'Fictional model unavailable'}});
     await intercepted.fulfill({json: {draft: {title: 'Fictional reviewed draft', note: 'Fictional review note', tags: ['drafted', 'Drafted', 'review']}, context: {previous_exchanges: 10, truncated: true}}});
@@ -561,12 +561,29 @@ export async function generationCases(page, adapter, api, base) {
     await api(id, '/generation/settings', {method: 'PUT', body: JSON.stringify({previous_exchanges: 10})});
     // Opening, choosing and changing scope never call the model or write a setting.
     await start();
-    await expect(draft()).toBeDisabled();
     await expect(context()).toHaveAccessibleName('Context: 10 previous exchanges');
-    await chooseReply();
+    // A whole conversation can be drafted as it stands: no response needs choosing.
     await expect(draft()).toBeEnabled();
     expect(calls).toBe(0);
+    expected = null;
+    await draft().click();
+    await expect(editor().getByLabel('Title', {exact: true})).toHaveValue('Fictional reviewed draft');
+    await expect(editor().getByRole('status')).toContainText('Draft ready to review.');
+    expect(calls).toBe(1);
+    expect((await api(id, '/entries')).total).toBe(count);
+    // One response waits for a response to be chosen, and says so.
+    await editor().getByRole('button', {name: 'One response', exact: true}).click();
+    await expect(draft()).toBeDisabled();
+    await expect(editor().locator('.cb-draft-anchor')).toHaveAccessibleName('Choose a response below, or switch to Whole conversation');
+    await editor().getByRole('option', {name: /Native assistant preview/}).click();
+    await expect(draft()).toBeEnabled();
+    expected = 1;
+    expect(calls).toBe(1);
     expect(settingWrites).toHaveLength(0);
+    await cancel();
+    calls = 0;
+    await start();
+    await chooseReply();
     // The context preset is saved when chosen and survives reopening.
     await context().click();
     await expect(page.getByRole('menuitem')).toHaveText([/^5 previous exchanges/, /^10 previous exchanges/, /^20 previous exchanges/, /^50 previous exchanges/]);
@@ -604,7 +621,7 @@ export async function generationCases(page, adapter, api, base) {
     release();
     await page.waitForTimeout(200);
     await expect(editor().getByLabel('Title', {exact: true})).toHaveValue('My newer title');
-    await expect(draft()).toBeDisabled();
+    await expect(draft()).toBeEnabled();
     pending = false;
     // A model failure is reported inline and can be retried.
     await chooseReply();

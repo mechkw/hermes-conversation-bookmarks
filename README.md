@@ -76,7 +76,7 @@ No session IDs to copy, ever.
 
 *Fictional Northstar demonstration. The details are ready for review; the bookmark has not yet been saved.*
 
-For a selected response, **Draft with AI** writes a title, note, and tags using your configured model. Review the draft before saving. Drafting is optional and never saves the bookmark by itself.
+**Draft with AI** writes a title, note, and tags using your configured model, for a whole conversation or for one selected response. Review the draft before saving. Drafting is optional and never saves the bookmark by itself.
 
 From a current Hermes conversation, you can also enter:
 
@@ -130,7 +130,7 @@ The bookmark catalog is local to the selected Hermes **backend profile**. On a r
 - Collection search covers bookmark annotations, not full conversation text.
 - Source choosers read bounded conversation metadata and assistant-response previews on request.
 - Selecting a bookmark reads its conversation's title and, for a response bookmark, a bounded excerpt of that response to show beside the list. It is not stored.
-- **Draft with AI** sends the selected response and bounded preceding context through Hermes's configured provider. Later conversation content is excluded.
+- **Draft with AI** sends the selected response and bounded preceding context through Hermes's configured provider; later content is excluded. For a whole conversation it sends the latest response and the same bounded context.
 - An assisted slash-command save uses the current agent's context. It is a different workflow from the editor's draft generation.
 
 Do not put secrets in bookmark titles, notes, or tags. This is not an encrypted vault or transcript backup. [Storage and privacy details](docs/USAGE.md#storage-and-privacy).

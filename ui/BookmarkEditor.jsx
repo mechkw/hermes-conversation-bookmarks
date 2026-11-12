@@ -142,7 +142,9 @@ export function BookmarkEditor({ api, entry, preset, restoreFocus, close, onSave
     }
   }
 
-  const canGenerate = !editing && draft.message_id != null && settingsReady && !settingsBusy && !settingsError && !busy;
+  // Either scope can be drafted: a chosen response, or the conversation as a whole.
+  const awaitingResponse = scope === 'response' && draft.message_id == null;
+  const canGenerate = !editing && Boolean(draft.session_id) && !awaitingResponse && settingsReady && !settingsBusy && !settingsError && !busy;
   async function generate() {
     if (working.current || !canGenerate) return;
     working.current = true; setGenerating(true); setGenerationError(''); setGenerationNotice('');
@@ -150,7 +152,7 @@ export function BookmarkEditor({ api, entry, preset, restoreFocus, close, onSave
     const current = () => token === life.current;
     try {
       if (!await persistPrevious() || !current() || version !== edits.current) return;
-      const data = await api('/generation/draft', { method: 'POST', body: { session_id: draft.session_id, message_id: draft.message_id } });
+      const data = await api('/generation/draft', { method: 'POST', body: { session_id: draft.session_id, message_id: scope === 'response' ? draft.message_id : null } });
       if (!current()) return;
       if (version !== edits.current) { setGenerationNotice('You kept editing, so the draft was not applied.'); return; }
       autoTitle.current = '';
@@ -187,7 +189,7 @@ export function BookmarkEditor({ api, entry, preset, restoreFocus, close, onSave
 
   const sourceMissing = editing && entry.source_status !== 'available';
   const sourceTitle = conversation ? conversationTitle({ ...conversation, id: draft.session_id }) : editing ? 'Saved conversation' : 'Selected conversation';
-  const draftHint = editing ? '' : draft.message_id == null ? 'Choose one response to draft its details with AI' : settingsError ? 'The context setting needs attention first' : '';
+  const draftHint = editing ? '' : awaitingResponse ? 'Choose a response below, or switch to Whole conversation' : settingsError ? 'The context setting needs attention first' : '';
 
   return (
     <Dialog
@@ -267,7 +269,7 @@ export function BookmarkEditor({ api, entry, preset, restoreFocus, close, onSave
             </Field>
             {(generating || generationNotice || generationError || settingsError) && (
               <div className="cb-draft-status">
-                {generating && <p role="status" className="cb-faint">Drafting from the selected response… You can keep editing.</p>}
+                {generating && <p role="status" className="cb-faint">{scope === 'response' ? 'Drafting from the selected response…' : 'Drafting from the conversation…'} You can keep editing.</p>}
                 {generationNotice && <p role="status" className="cb-faint"><Icon name="sparkle" size="0.75rem" /> {generationNotice}</p>}
                 {generationError && <ErrorNote action={<Button variant="text" size="inline" onClick={generate}>Try again</Button>}>{generationError}</ErrorNote>}
                 {settingsError && <ErrorNote action={<Button variant="text" size="inline" onClick={() => (settingsReady ? persistPrevious() : setSettingsAttempt(n => n + 1))}>Retry context setting</Button>}>{settingsError}</ErrorNote>}

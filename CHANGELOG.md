@@ -4,6 +4,14 @@ Release tags identify published versions. Unreleased notes describe source chang
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-12
+
+### Fixed
+
+- **Draft with AI works for either scope.** A whole-conversation bookmark can be drafted without choosing a response: the draft covers the conversation's latest usable response and as many earlier exchanges as the context choice allows. Choosing **One response** still drafts for exactly that response. Every source fence (profile, hidden, non-human sources, private and synthetic rows) applies unchanged.
+- **The conversation picker lists your conversations first.** Automated runs (cron, subagents, one-shots) now sort after conversations you took part in, instead of crowding them out of the 1,000-item window. Search runs across the whole history before the window is cut, and an untitled conversation shows its first visible request so it can be recognized. That line is chooser text only and is never stored.
+- **Routes no longer wait on the host's shared worker pool.** Bookmark routes now run on a small pool owned by the plugin. On a busy Hermes backend, the host's own slow reads could fill the shared pool, leaving Saved at "Checking availability…" and the conversation list timing out after 30 seconds even though the plugin was healthy.
+
 ## 0.2.0 - 2026-11-12
 
 A ground-up interface pass. Storage, tools, slash commands, Telegram panels, and every existing API route behave as before; saved bookmarks need no migration.

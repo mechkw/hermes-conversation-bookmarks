@@ -92,9 +92,11 @@ Stored preview cells are bounded to 16 KiB before decoding. Returned previews ar
 
 Source states are `available`, `session_missing`, `message_missing`, `store_missing`, and `unavailable`. None promises source retention. A source may disappear immediately after validation, and annotations cannot reconstruct it.
 
+`GET /sources/sessions` orders conversations from people-facing sources before automated ones, applies `q` to title, ID and source before cutting the 1,000-item window, and adds an ephemeral `preview` (first visible user request, at most 120 characters) to untitled items on the returned page. Plain `def` routes and dependencies run on a four-worker pool owned by the plugin (`offloaded`), not on the host's shared pool.
+
 ## Manual AI draft
 
-Editor **Draft with AI** uses `POST /generation/draft` for a new response bookmark. It sends the selected response, its preceding real user request, and bounded earlier eligible exchanges through `ctx.llm.acomplete_structured` with task `conversation_bookmarks_details`. It excludes later text. It returns a draft, never a saved entry.
+Editor **Draft with AI** uses `POST /generation/draft` for a new bookmark. With `message_id` null or omitted it drafts for the whole conversation: the collector anchors on the newest visible assistant response that passes every fence (trying at most six) and reports it as `context.anchor_message_id` with `context.scope`. With a `message_id` it sends the selected response, its preceding real user request, and bounded earlier eligible exchanges through `ctx.llm.acomplete_structured` with task `conversation_bookmarks_details`. It excludes later text. It returns a draft, never a saved entry.
 
 UI **Context** offers 5, 10, 20, or 50 previous exchanges, default 10. The compatibility API accepts strict integers 0–100. Generation reports actual/requested context and truncation. Required focal text is not silently shortened. The collector follows eligible compression continuity within its bounded native-history contract; it does not invent missing ancestry or initialize display indices.
 

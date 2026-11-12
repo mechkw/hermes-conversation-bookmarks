@@ -51,7 +51,7 @@ hermes config set plugins.entries.conversation-bookmarks.allow_gateway_injection
 
 Set it only for the intended profile and only when you want that workflow. The host must also support a current-session handoff. Permission alone cannot add a missing host capability.
 
-The editor's **Draft with AI** is separate. It needs an active Agent runtime with supported structured model access and an eligible selected response. It returns an editable draft and never saves by itself.
+The editor's **Draft with AI** is separate. It needs an active Agent runtime with supported structured model access and an eligible conversation or selected response. It returns an editable draft and never saves by itself.
 
 ## Configure native Telegram panels
 
@@ -89,7 +89,7 @@ Test assisted `/bookmark` separately if you plan to use it. A queued handoff, su
 | Source choices are empty | Correct profile, native source store, filters, and bounded recent-source window. |
 | `/bookmark` reports no session | Start or resume the intended conversation, or choose a source in Saved. |
 | Assisted save denied | Host handoff support and explicit per-plugin consent; otherwise supply all metadata. |
-| Draft with AI is disabled | A new bookmark with **One response** and a response selected, a loaded context setting, and an active Agent runtime. |
+| Draft with AI is disabled | A new bookmark with a conversation chosen (and, for **One response**, a response selected), a loaded context setting, and an active Agent runtime. |
 | Source cannot be reopened | Native source availability; the bookmark is not a transcript copy. |
 
 Use the [issue tracker](https://github.com/mechkw/hermes-conversation-bookmarks/issues) for ordinary bugs. Include Hermes version, plugin version, client type, backend operating system, and sanitized steps. Do not post session IDs, private notes, or source text publicly.

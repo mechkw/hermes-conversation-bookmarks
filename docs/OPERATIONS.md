@@ -18,7 +18,7 @@ For a model-free current-conversation save, supply all metadata:
 
 Bare `/bookmark` requests capture with missing metadata completed by the current agent. Bare `/bookmarks` browses without saving. Use `/bookmarks browse launch` to search saved annotations. Explicit `add` forms are available on both singular and plural commands.
 
-For a response reference, open **New bookmark**, pick the conversation, choose **One response** and the response, enter annotations, and select **Save bookmark**. Optional **Draft with AI** produces a draft only. Review it before Save; a draft replaces the title, note, and tags in the form.
+For a response reference, open **New bookmark**, pick the conversation, choose **One response** and the response, enter annotations, and select **Save bookmark**. Optional **Draft with AI** produces a draft only, for either a whole conversation or one response. Review it before Save; a draft replaces the title, note, and tags in the form.
 
 Check the saved bookmark before repeating a request with an uncertain outcome. Creates are not idempotent. An accepted agent handoff is queued work, not a successful save. Assisted gateway saves require explicit permission described in [Commands](COMMANDS.md#complete-missing-details-with-the-current-agent); the plugin does not enable it itself.
 

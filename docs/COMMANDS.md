@@ -79,7 +79,7 @@ This is different from **Draft with AI** in the editor:
 | Workflow | Context | Persistence |
 | --- | --- | --- |
 | Assisted `/bookmark` | Context already available to the current agent. | Explicit request to complete and save. |
-| Editor **Draft with AI** | Selected response and bounded earlier exchanges. | Editable draft only. Save remains separate. |
+| Editor **Draft with AI** | Selected response (or a whole conversation's latest response) and bounded earlier exchanges. | Editable draft only. Save remains separate. |
 
 Gateway-assisted saves require explicit per-plugin permission on a host that supports the handoff:
 
