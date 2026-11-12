@@ -2,7 +2,7 @@
 
 **Come back to the part that mattered.**
 
-Contest candidate. [Verified workflows and known issues](docs/RELEASE_STATUS.md).
+[What is verified and what is not](docs/RELEASE_STATUS.md).
 
 Give a useful Hermes conversation or assistant response a title, a note, and a way back. Find the decision you made, the explanation that clicked, or the thread you want to continue.
 
@@ -19,7 +19,7 @@ Give a useful Hermes conversation or assistant response a title, a note, and a w
 
 [Conversation Bookmarks launch film · 36 seconds](docs/assets/launch.mp4) · [Both plugins together · 42 seconds](docs/assets/saved-together.mp4)
 
-Real dark-mode native screens, fictional Northstar notes. The films show saved references and the source-return control, not a transcript backup or a continuous recording.
+Fictional Northstar notes. The films were recorded with the 0.1 interface; the workflow is the same, the current screens are the ones pictured below. They show saved references and the source-return control, not a transcript backup or a continuous recording.
 
 ## Save the reference, add the reason
 
@@ -63,20 +63,20 @@ Use the installer's activation result to check whether anything still needs a re
 
 ## Save your first bookmark
 
-In **Saved → Bookmarks**, choose **Save bookmark**. You can also open the collection from native Desktop's **Plus → Bookmarks** entry:
+In **Saved → Bookmarks**, choose **New bookmark**:
 
-1. Choose a conversation by title and date.
-2. Leave **Entire conversation** selected, or choose an assistant response.
+1. Pick the conversation from your recent ones. Type to narrow the list.
+2. Leave **Whole conversation** selected, or choose **One response** and pick the response.
 3. Enter a title, optional note, and tags.
 4. Select **Save bookmark**.
 
-No session IDs to copy for the normal chooser workflow.
+No session IDs to copy, ever.
 
-<img src="docs/assets/dark-add-bookmark.png" alt="Dark-mode bookmark form with the fictional Northstar conversation selected and annotations ready for an explicit Save bookmark" width="520">
+<img src="docs/assets/new-bookmark.webp" alt="New bookmark dialog in dark mode: the fictional Northstar launch plan conversation is chosen, one response is selected from a list of previews, and the title, note and tag fields are filled in" width="640">
 
 *Fictional Northstar demonstration. The details are ready for review; the bookmark has not yet been saved.*
 
-For a selected response, **Generate details** drafts a title, note, and tags using your configured model. Review the draft before saving. Generation is optional and never saves the bookmark by itself.
+For a selected response, **Draft with AI** writes a title, note, and tags using your configured model. Review the draft before saving. Drafting is optional and never saves the bookmark by itself.
 
 From a current Hermes conversation, you can also enter:
 
@@ -90,17 +90,29 @@ Browse from chat with `/bookmarks` or `/bookmark browse`. Use `/bookmarks browse
 
 [Command syntax, Telegram panels, and assisted-save setup](docs/COMMANDS.md).
 
-## Browse without losing your place
+## Find it again
 
-Search saved titles, notes, and tags. Filter by an exact tag, then sort by newest saved, oldest saved, or title.
+Search saved titles, notes, and tags. Narrow to conversations or single responses, select a tag from your most-used ones, and sort by newest, oldest, or title.
 
-Choose a bookmark title to inspect its note, tags, source status, and resume information beside the collection. Checkboxes select bookmarks for removal; they do not open the inspector. Page selection is labeled by scope, and selections can span pages.
+Select a bookmark to see it beside the list: your note and tags, the conversation it came from, and, for a response bookmark, an excerpt of the response you saved. That preview is read on request and never stored. The exact reference and a resume command are one click away under **Reference**.
 
-![Dark-mode Bookmarks collection with the fictional Northstar bookmark checked and its note and tags visible in the adjacent inspector](docs/assets/dark-bookmarks.png)
+![Bookmarks collection in dark mode: a search box, type filter and tag row above a list of fictional bookmarks, with the selected bookmark's note, tags and saved response shown in a details pane beside the list](docs/assets/collection.webp)
 
-*One bookmark selected for metadata removal, with its source still available. Inspection and checkbox selection are separate actions.*
+*Fictional data. Selecting a bookmark and checking it for removal are separate actions.*
 
-Use **Open conversation** in native Desktop to resume an available source. A response reference identifies what you saved, but opening resumes the conversation; it does not promise to scroll to that exact response. The web Dashboard offers the source ID and a profile-qualified terminal resume command.
+Use **Open conversation** in native Desktop to resume an available source, or double-click the row. A response reference identifies what you saved, but opening resumes the conversation; it does not promise to scroll to that exact response. The web Dashboard offers the conversation ID and a profile-qualified terminal resume command.
+
+Everything works from the keyboard: `/` to search, arrows to browse, `N` for a new bookmark, `O` to open, `E` to edit. [All shortcuts](docs/USAGE.md#keyboard-shortcuts).
+
+## Without leaving the chat
+
+In native Desktop:
+
+- **+ → Bookmarks** in the composer, or **Find a bookmark** in the command palette, opens a quick finder. Type, arrow, Enter returns to that conversation. Ctrl+Enter (⌘+Enter) mentions the bookmark in the message you are writing.
+- **Bookmark this conversation** in the command palette, or Ctrl+Alt+B (⌘⌥B), opens the editor on the chat you are in.
+- Conversations that have bookmarks carry a small mark in the sidebar. Select it to see just those bookmarks.
+
+<img src="docs/assets/quick-find.webp" alt="Quick finder in dark mode: a search box with the word launch and two matching fictional bookmarks, with keyboard hints for opening a conversation or mentioning the bookmark in chat" width="640">
 
 ## Your annotations survive a missing source
 
@@ -117,7 +129,8 @@ The bookmark catalog is local to the selected Hermes **backend profile**. On a r
 - Saving is deliberate. There is no automatic capture or plugin analytics service.
 - Collection search covers bookmark annotations, not full conversation text.
 - Source choosers read bounded conversation metadata and assistant-response previews on request.
-- **Generate details** sends the selected response and bounded preceding context through Hermes's configured provider. Later conversation content is excluded.
+- Selecting a bookmark reads its conversation's title and, for a response bookmark, a bounded excerpt of that response to show beside the list. It is not stored.
+- **Draft with AI** sends the selected response and bounded preceding context through Hermes's configured provider. Later conversation content is excluded.
 - An assisted slash-command save uses the current agent's context. It is a different workflow from the editor's draft generation.
 
 Do not put secrets in bookmark titles, notes, or tags. This is not an encrypted vault or transcript backup. [Storage and privacy details](docs/USAGE.md#storage-and-privacy).

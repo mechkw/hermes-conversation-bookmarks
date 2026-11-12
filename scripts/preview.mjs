@@ -5,7 +5,8 @@
  *
  * Needs the same local setup as the browser regressions (docs/SAVED_UI.md):
  * HERMES_SOURCE, PYTHON, and the companion repository next to this one.
- * PREVIEW_ONLY=name,name limits the shots; PREVIEW_SKIN picks a built-in skin.
+ * PREVIEW_ONLY=name,name limits the shots; PREVIEW_SKIN picks a built-in skin;
+ * PREVIEW_MODES=light,dark picks appearances; PREVIEW_CROP=1 crops dialogs.
  */
 import {execFileSync} from 'node:child_process';
 import {mkdir, readdir, realpath} from 'node:fs/promises';
@@ -70,13 +71,25 @@ async function seedBookmarks(source) {
   await save({title: 'Where we left the launch plan', note: 'Three remaining checks, an owner for each, and a clear next step.', tags: ['launch', 'planning'], session_id: 'northstar-launch'});
   await save({title: 'Friday launch decision', note: 'Friday stays; scope is reduced. Tour moves to the next sprint so QA gets two full days.', tags: ['launch', 'decision'], session_id: 'northstar-launch', message_id: 101});
   source.prune();
+  // Spread the fictional bookmarks over a few weeks so ages read like a real collection.
+  const dir = (await readdir(harness.scratch, {withFileTypes: true})).find(d => d.isDirectory() && d.name.startsWith('sv-'));
+  const store = join(await realpath(join(harness.scratch, dir.name, 'home')), 'plugin-data', 'conversation-bookmarks', 'bookmarks.sqlite3');
+  execFileSync(process.env.PYTHON || 'python', ['-c', `import sqlite3,sys
+ages=[0.4,3,27,52,170,330,700,2100]
+with sqlite3.connect(sys.argv[1]) as db:
+ rows=[r[0] for r in db.execute('SELECT id FROM entries ORDER BY created DESC,rowid DESC')]
+ for entry,hours in zip(rows,ages):
+  at=int(sys.argv[2])-int(hours*3600)
+  db.execute('UPDATE entries SET created=?,updated=? WHERE id=?',(at,at,entry))`, store, String(NOW)]);
 }
 
 const shots = [];
-async function shoot(page, name, mode) {
+async function shoot(page, name, mode, dialog = false) {
   if (only && !only.includes(name)) return;
   const file = join(out, `${name}-${mode}.png`);
-  await page.screenshot({path: file});
+  // PREVIEW_CROP=1 saves dialogs on their own, for documentation.
+  if (dialog && process.env.PREVIEW_CROP) await page.getByRole('dialog').screenshot({path: file});
+  else await page.screenshot({path: file});
   shots.push(file);
 }
 
@@ -127,26 +140,26 @@ try {
 
     await page.getByRole('button', {name: 'New bookmark', exact: true}).click();
     await page.getByRole('option', {name: /Northstar launch plan/}).waitFor();
-    await shoot(page, '06-editor-choose', mode);
+    await shoot(page, '06-editor-choose', mode, true);
     await page.getByRole('option', {name: /Northstar launch plan/}).click();
     await page.getByRole('button', {name: 'One response', exact: true}).click();
     await page.getByRole('option', {name: /Friday stays/}).click();
     await page.getByLabel('Note').fill('Scope is reduced, the date is not.');
     await page.getByLabel('Tags').fill('launch');
     await page.keyboard.press('Enter');
-    await shoot(page, '07-editor-details', mode);
+    await shoot(page, '07-editor-details', mode, true);
     await page.getByRole('button', {name: 'Cancel', exact: true}).click();
 
     await page.getByRole('button', {name: 'Bookmark settings', exact: true}).click();
     await page.getByRole('switch', {name: 'Show notes in list'}).waitFor();
-    await shoot(page, '08-settings', mode);
+    await shoot(page, '08-settings', mode, true);
     await page.keyboard.press('Escape');
 
     await page.evaluate(() => window.__QA_REGISTRY__.getArea('composer.attachments').find(x => x.data.label === 'Bookmarks').data.run());
     await page.getByRole('dialog').getByRole('option').first().waitFor();
     await page.getByRole('dialog').getByRole('textbox').fill('launch');
     await page.waitForTimeout(400);
-    await shoot(page, '09-quick-find', mode);
+    await shoot(page, '09-quick-find', mode, true);
     await page.keyboard.press('Escape');
 
     await page.getByLabel('Search bookmarks').fill('zzzz');

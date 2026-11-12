@@ -6,11 +6,13 @@ A bookmark keeps an exact conversation reference, an optional message reference,
 
 - [Choose what to bookmark](#choose-what-to-bookmark)
 - [Save from the collection](#save-from-the-collection)
-- [Generate a response bookmark draft](#generate-a-response-bookmark-draft)
+- [Draft details with AI](#draft-details-with-ai)
 - [Save from the current conversation](#save-from-the-current-conversation)
+- [Find a bookmark from chat](#find-a-bookmark-from-chat)
 - [Search and inspect bookmarks](#search-and-inspect-bookmarks)
 - [Return to a conversation](#return-to-a-conversation)
 - [Edit or remove bookmarks](#edit-or-remove-bookmarks)
+- [Keyboard shortcuts](#keyboard-shortcuts)
 - [Set browsing preferences](#set-browsing-preferences)
 - [Source availability and limits](#source-availability-and-limits)
 - [Storage and privacy](#storage-and-privacy)
@@ -28,16 +30,15 @@ Choose a title that describes why you saved the reference. Put supporting detail
 
 In native Desktop or the web Dashboard:
 
-1. Open **Saved → Bookmarks**, or choose **Plus → Bookmarks** in native Desktop.
-2. Select **Save bookmark**.
-3. In **Choose a conversation**, choose the source by title and date.
-4. In **Response (optional)**, choose an assistant response or leave **Entire conversation** selected.
-5. Enter the title, optional note, and tags.
-6. Select **Save bookmark**.
+1. Open **Saved → Bookmarks** and select **New bookmark** (or press `N`).
+2. Pick the conversation. The list shows your recent conversations by title, where they happened, and when; type to narrow it.
+3. Leave **Whole conversation** selected, or choose **One response** and pick the assistant response you mean.
+4. Enter the title, an optional note, and tags.
+5. Select **Save bookmark**, or press Ctrl+Enter (⌘+Enter on macOS).
 
-Conversation and response controls have separate search fields and pages. Choosing another conversation clears the response selection, so a response cannot silently carry over from a different source.
+The title starts as the conversation's title and follows it if you change conversations, until you type your own. **Change conversation** returns to the list; **Keep current** backs out without changing anything. Choosing another conversation clears the response selection, so a response cannot silently carry over from a different source. The editor never asks for a session or message ID.
 
-Tags in the editor use **one tag per line**. A comma remains part of that tag. Slash commands use comma-separated tags instead.
+Tags are chips. Type a tag and press Enter to add it; Backspace in the empty field removes the last one. A comma is an ordinary character, so `design, decisions` stays one tag. Tags you already use are offered as one-click suggestions. Slash commands use comma-separated tags instead.
 
 | Field | Limit |
 | --- | --- |
@@ -49,25 +50,27 @@ Tags in the editor use **one tag per line**. A comma remains part of that tag. S
 
 Tag boundaries are trimmed. Case-insensitive duplicates keep their first spelling. The title, note, and tags are annotations, not instructions that the plugin executes.
 
-## Generate a response bookmark draft
+After saving, the new bookmark is selected in the list with its details open beside it.
 
-Generation is available for a new bookmark with a selected assistant response. Entire-conversation bookmarks can be written manually.
+## Draft details with AI
 
-1. In **Save bookmark**, choose the conversation and response.
-2. Choose **Context**: 5, 10, 20, or 50 previous exchanges. The default is 10.
-3. Select **Generate details**.
-4. Review the generated title, note, and tags. Edit anything you want to change.
+Drafting is available for a new bookmark with **One response** selected. Whole-conversation bookmarks are written by hand.
+
+1. In **New bookmark**, choose the conversation and the response.
+2. Optionally open the number beside **Draft with AI** to choose how much earlier conversation to include: 5, 10, 20, or 50 previous exchanges. The default is 10.
+3. Select **Draft with AI**.
+4. Review the drafted title, note, and tags. Edit anything you want to change.
 5. Select **Save bookmark**.
 
-The context choice is saved for this profile when you change it. It controls generation context, not how much conversation is backed up. No transcript is backed up.
+The context choice is saved for this profile when you change it. It controls drafting context, not how much conversation is backed up. No transcript is backed up.
 
 The request includes the selected assistant response, its preceding real user request, and up to the selected number of earlier exchanges. It excludes content after the selected response. An exchange is a user request and its following visible assistant replies, not a fixed number of database rows.
 
-Generation replaces the draft fields with a generated title, note, and tags. Review them before saving. If you edit while generation is in progress, the editor keeps those newer edits rather than applying a stale result.
+A draft replaces the title, note, and tags in the form. If you edit, or change what the bookmark points at, while a draft is being written, the editor keeps your changes and discards the late draft.
 
-A model timeout or invalid result leaves the draft unchanged. Correct the source if necessary, retry when ready, or enter metadata manually. Generation requires the active Agent runtime, supported model access, and an available eligible source.
+A model timeout or invalid result leaves the form unchanged and offers **Try again**. Drafting requires the active Agent runtime, supported model access, and an available eligible source.
 
-**Generate details never saves a bookmark.** Closing the form without Save does not save the generated result.
+**Draft with AI never saves a bookmark.** Closing the form without Save does not save the draft.
 
 ## Save from the current conversation
 
@@ -94,35 +97,49 @@ Assisted saves require a supported current-session handoff and explicit per-plug
 
 In a shared group or topic, the host-routed conversation may be shared. A bookmark is not a private per-user copy of that group. Use a private conversation for private context.
 
+In native Desktop you can also run **Bookmark this conversation** from the command palette, or press Ctrl+Alt+B (⌘⌥B on macOS; rebindable in Keyboard settings). It opens the editor on the chat you are in, with the conversation already chosen, without leaving the chat.
+
+## Find a bookmark from chat
+
+Native Desktop has a quick finder: choose **Bookmarks** in the composer's **+** menu, or run **Find a bookmark** from the command palette.
+
+- Type to search titles, notes, and tags. Use the arrow keys to move.
+- **Enter** returns to that bookmark's conversation.
+- **Ctrl+Enter** (⌘+Enter) writes a short mention of the bookmark, with its reference and note, into the message you are composing, so the agent can look it up. Nothing is sent until you send the message.
+- **Bookmark this conversation** and **All bookmarks** are at the bottom.
+
+Conversations that have bookmarks show a small bookmark mark on their sidebar row. Select it to open **Saved** filtered to that conversation; select the **This conversation** chip to clear the filter.
+
 ## Search and inspect bookmarks
 
-The collection search covers saved **titles, notes, and tags**, not full conversation text. Use **Tag** for an exact case-insensitive tag match.
+The search box covers saved **titles, notes, and tags**, not full conversation text.
 
-Sort by:
+- **All / Conversations / Responses** narrows by what the bookmark points at.
+- The tag row lists your most-used tags with counts. Select one for an exact, case-insensitive match; select it again to clear it. Tags on a row or in the details pane do the same.
+- **Sort** offers newest first, oldest first, and title A–Z. A save's original creation date controls the order; editing does not turn an older bookmark into a new one.
+- **Clear filters** resets search, type, and tag together.
 
-- **Newest saved**.
-- **Oldest saved**.
-- **Title A–Z**.
+The list loads 30 bookmarks at a time; **Show more** adds the next 30 below.
 
-The collection displays 30 bookmarks per page. A save's original creation date controls newest and oldest order; editing annotations does not turn an older bookmark into a new one.
+Select a bookmark to see it in the details pane beside the list. The pane shows the note, tags, when it was saved, and where it came from: the conversation's title and, for a response bookmark, an excerpt of the saved response. That source preview is read on request each time and is never stored with the bookmark. **Reference** expands the exact conversation ID, response ID, and resume command, each with a copy button.
 
-Choose a bookmark title to open the adjacent inspector. Inspecting preserves collection context and is separate from checking the bookmark for removal. Use **Close preview** or Escape to close the inspector when no action is running.
+Each row has a menu (⋮, or right-click in native Desktop) with the same actions as the details pane. On a narrow window the details pane takes the list's place; use the back arrow to return.
 
-The inspector shows the saved note, tags, source availability, session reference, and optional message reference. It also provides resume information and editing or removal actions.
+A bookmark whose source is gone is flagged in the list and explained in the details pane. See [Source availability and limits](#source-availability-and-limits).
 
-The source chooser's search is a different operation from collection search. It searches bounded recent source choices and response previews while you create a bookmark. Those previews are not a new full-history search index.
+The conversation picker's search is a different operation from collection search. It searches bounded recent source choices and response previews while you create a bookmark. Those previews are not a new full-history search index.
 
 ## Return to a conversation
 
 ### Native Desktop
 
-Select an available bookmark and choose **Open conversation**. The plugin uses Hermes's native session-opening action.
+Select a bookmark and choose **Open conversation**, double-click its row, or press `O`. The plugin rechecks that the source still exists, then uses Hermes's native session-opening action.
 
 Opening a response bookmark resumes its conversation. It does not promise an exact-response scroll position, even though the saved message reference identifies the response you chose.
 
 ### Web Dashboard or terminal
 
-Copy the session ID or use the profile-qualified command shown in the inspector. Run the command on the same Hermes host that owns the source profile.
+Expand **Reference** in the details pane and copy the conversation ID or the profile-qualified resume command, or use **Copy resume command** in the row menu. Run the command on the same Hermes host that owns the source profile.
 
 The command includes `--profile` for a non-default profile. Do not paste a private session identifier into a public issue or send it to another host expecting the conversation to travel with it.
 
@@ -130,40 +147,55 @@ The command includes `--profile` for a non-default profile. Do not paste a priva
 
 ### Edit annotations
 
-1. Open the bookmark inspector.
-2. Select **Edit bookmark**.
-3. Change the title, note, tags, or source selection.
-4. Select **Save changes**.
+1. Select the bookmark and choose **Edit bookmark** (or press `E`).
+2. Change the title, note, tags, or what the bookmark points at.
+3. Select **Save changes**.
 
-An unavailable source reference can remain unchanged while you edit its annotations. A newly chosen source must exist. Saved references outside the current chooser page remain selected until you deliberately replace them.
+An unavailable source reference can remain unchanged while you edit its annotations. A newly chosen source must exist. A saved reference stays as it is until you deliberately choose a different conversation or response.
 
-Updates use the current bookmark revision. If another client changed it, the save fails with a conflict rather than overwriting that change. Refresh the bookmark and review the latest state before retrying.
+Updates use the current bookmark revision. If another client changed it, the save fails with a conflict rather than overwriting that change, and your draft stays in the form. Refresh and review the latest state before retrying.
 
 ### Remove one bookmark
 
-Open the inspector, select **Remove bookmark**, and review the confirmation. **Remove metadata** deletes the bookmark record, not its conversation or message.
+Choose **Remove bookmark** from the row menu or the details pane's **⋯** menu (or press Delete), and confirm. Removal deletes the bookmark record, not its conversation or message.
 
 ### Remove selected bookmarks
 
-1. Check the bookmarks you want to remove, or use **Select page**.
-2. Continue to another page if you need more bookmarks. The selection count spans pages.
-3. Select **Remove selected bookmarks**.
-4. Review the count and confirm **Remove metadata**.
+1. Hover a row and check its box, or press `X` on the selected row. Once one is checked, every row shows its checkbox.
+2. Use the checkbox above the list to select everything currently loaded; **Show more** and keep selecting if you need more.
+3. Select **Remove selected bookmarks**, review the count, and confirm.
 
-**Select page** affects only the current page. It is not “all filtered matches.” Changing filters clears the selection. **Clear selection** removes the checks without deleting anything.
+The checkbox above the list selects the loaded bookmarks only. It is not “all filtered matches.” Changing filters or refreshing clears the selection. **Clear selection** removes the checks without deleting anything.
 
-The bulk endpoint accepts at most 100 selected bookmarks in one request. Keep each removal batch within that limit. If a selected bookmark changed or disappeared, the bulk operation rejects the batch without removing the remaining selections.
+A removal batch holds at most 100 bookmarks. If a selected bookmark changed or disappeared, the whole batch is rejected and nothing is removed.
 
 There is no Shelf-style Archive, Trash, version history, or recovery timer for bookmark metadata. Treat confirmation as a permanent removal of that annotation record.
 
+## Keyboard shortcuts
+
+With focus in the Bookmarks list:
+
+| Key | Action |
+| --- | --- |
+| `/` | Focus search. |
+| `N` | New bookmark. |
+| `↑` `↓` (or `K` `J`) | Move through the list. |
+| `O` | Open the selected bookmark's conversation (native Desktop). |
+| `E` | Edit the selected bookmark. |
+| `X` | Check or uncheck the selected bookmark. |
+| Delete | Remove the selected bookmark, after confirmation. |
+| Escape | Close the details pane. |
+
+Shortcuts are ignored while you type in a field. In the editor, Ctrl+Enter (⌘+Enter) saves.
+
 ## Set browsing preferences
 
-Open **Bookmark settings** from the collection's settings action.
+Open **Bookmark settings** (the gear) in the collection, or the Bookmarks page in native Desktop settings.
 
-- **Show notes in list** controls note excerpts in collection rows.
-- **Show source status in list** controls source-status labels in the list.
+- **Show notes in list** previews the first lines of each note under its title.
+- **Show source status in list** flags bookmarks whose source is no longer available.
 
-These preferences do not delete annotations or change the source. The inspector still provides the saved reference and source information. The separate **Context** control in the Add form controls generation context for new response bookmarks.
+Each switch saves when changed. These preferences do not delete annotations or change the source, and the details pane always reports source availability. The separate context choice beside **Draft with AI** controls drafting context for new response bookmarks.
 
 ## Source availability and limits
 
@@ -173,15 +205,15 @@ Availability checks can report:
 
 | Status | Meaning |
 | --- | --- |
-| Source available | The referenced source can be found. |
-| Session unavailable | The conversation is no longer present. |
-| Message unavailable | The conversation exists, but the referenced message does not. |
-| Session store unavailable | The native store is absent or cannot be opened. |
-| Source check unavailable | The plugin could not complete the source check. |
+| *(no flag)* | The referenced source can be found. |
+| Conversation unavailable | The conversation is no longer present. |
+| Response unavailable | The conversation exists, but the referenced response does not. |
+| Conversation history unavailable | The native store is absent or cannot be opened. |
+| Source could not be checked | The plugin could not complete the source check. |
 
 Unavailable does not mean the bookmark was deleted. Your title, note, and tags remain. Bookmarks cannot recreate the missing transcript or recover it from the annotation.
 
-The chooser searches up to 1,000 recent conversations and up to 500 recent assistant responses in the selected conversation. The UI reports when that source window is truncated. Paging moves within the bounded window; it is not a promise to search the entire history.
+The picker searches up to 1,000 recent conversations and up to 500 recent assistant responses in the selected conversation, and says so when older ones are not listed. **Show more** moves within that bounded window; it is not a promise to search the entire history.
 
 Source content is read through a plugin-owned read-only adapter. Source selection and generation enforce eligibility, size, time, and query limits. A readable native session is not automatically eligible for every generation request.
 
@@ -198,8 +230,9 @@ The catalog stores references, annotations, timestamps, revisions, and plugin se
 There is no automatic bookmarking, background transcript collector, or plugin analytics service. That does not mean the plugin never reads source text:
 
 - Ordinary collection search reads saved metadata and checks source availability.
-- Source choosers read bounded metadata and visible assistant-response previews when you ask for choices.
-- **Generate details** sends the selected response and bounded preceding context to Hermes's configured provider.
+- The conversation picker reads bounded metadata and visible assistant-response previews when you ask for choices.
+- The details pane reads one conversation title and, for a response bookmark, a bounded excerpt of that response each time you select a bookmark. It is shown, not stored.
+- **Draft with AI** sends the selected response and bounded preceding context to Hermes's configured provider.
 - Assisted `/bookmark` uses the context already available to the current Hermes agent.
 
 Those last two workflows have different context boundaries. The editor's “nothing after the selected response” rule is not a promise that an active agent's existing context excludes later material.
@@ -215,12 +248,13 @@ Ordinary package updates or uninstall do not erase saved data. Back up the bookm
 | No current native session | Start or resume the intended conversation, or choose the source in Saved. |
 | Assisted save denied or unavailable | Supply all metadata, use the editor, or review explicit handoff permission on a supported host. |
 | A queued request has no completion | Inspect Saved before retrying. Queued is not proof of a saved bookmark. |
-| Generate details is disabled | Choose an assistant response in a new bookmark and wait for context settings to load. |
-| Generation times out or returns invalid data | Retry, or enter details manually. The failed generation did not save a bookmark. |
-| Source does not appear in search | Clear filters, page within the source window, and check that the correct profile is selected. |
+| Draft with AI is disabled | Choose **One response** and a response in a new bookmark, and wait for the context setting to load. |
+| Drafting times out or returns invalid data | Try again, or enter details manually. The failed draft did not save a bookmark. |
+| Source does not appear in the picker | Clear its search, use **Show more**, and check that the correct profile is selected. |
+| No source preview in the details pane | The source is hidden, unsupported, or not a visible assistant response. The reference and your annotations are unaffected. |
 | Source unavailable | Keep or edit the annotation. Restore the native source from your own backup if available; Bookmarks has no transcript copy. |
 | Bookmark changed elsewhere | Refresh and review before resubmitting the edit or removal. |
-| Open conversation is absent | Use the displayed resume command. Native opening belongs to the Desktop adapter. |
+| Open conversation is absent | Expand **Reference** and use the resume command. Native opening belongs to the Desktop adapter. |
 | Removal batch is too large | Clear selection and remove at most 100 explicitly selected bookmarks per batch. |
 
 For component discovery, use [Installation](INSTALLATION.md). For syntax and assisted metadata, use [Commands](COMMANDS.md). Report ordinary bugs with sanitized reproduction steps through the [repository issues](https://github.com/mechkw/hermes-conversation-bookmarks/issues). Use [SECURITY.md](../SECURITY.md) for vulnerabilities; **repobugs@virtuedev.com** is the private fallback.

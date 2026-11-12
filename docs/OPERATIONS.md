@@ -4,7 +4,7 @@
 
 ## Install and open
 
-Follow [Installation](INSTALLATION.md) for native Desktop, web Dashboard, and remote pairing. Check the backend and profile, then open **Saved → Bookmarks**. Native **Plus → Bookmarks** opens browsing, not an automatic save. Browser-hosted Desktop is not the web Dashboard.
+Follow [Installation](INSTALLATION.md) for native Desktop, web Dashboard, and remote pairing. Check the backend and profile, then open **Saved → Bookmarks**. Native **+ → Bookmarks** opens a quick finder, not an automatic save. Browser-hosted Desktop is not the web Dashboard.
 
 The package works alone. Delivery Shelf is optional and stores different data. Installing a remote Agent half does not prove the local Desktop half is present or enabled.
 
@@ -18,7 +18,7 @@ For a model-free current-conversation save, supply all metadata:
 
 Bare `/bookmark` requests capture with missing metadata completed by the current agent. Bare `/bookmarks` browses without saving. Use `/bookmarks browse launch` to search saved annotations. Explicit `add` forms are available on both singular and plural commands.
 
-For a response reference, open **Save bookmark**, choose a conversation and optional assistant response, enter annotations, and select **Save bookmark**. Optional **Generate details** produces a draft only. Review it before Save; generation can replace existing draft fields.
+For a response reference, open **New bookmark**, pick the conversation, choose **One response** and the response, enter annotations, and select **Save bookmark**. Optional **Draft with AI** produces a draft only. Review it before Save; a draft replaces the title, note, and tags in the form.
 
 Check the saved bookmark before repeating a request with an uncertain outcome. Creates are not idempotent. An accepted agent handoff is queued work, not a successful save. Assisted gateway saves require explicit permission described in [Commands](COMMANDS.md#complete-missing-details-with-the-current-agent); the plugin does not enable it itself.
 
@@ -43,17 +43,17 @@ Panel details can expose annotation text and source identifiers to other chat pa
 
 ## Inspect or remove bookmarks
 
-Select a title to open its adjacent inspector. Use **Open conversation** in native Desktop or the supplied resume command on the same backend. Opening a response bookmark resumes its conversation, not an exact-message scroll position.
+Select a bookmark to see it in the details pane beside the list. Use **Open conversation** in native Desktop, or expand **Reference** for the resume command and run it on the same backend. The pane's source preview (conversation title and a bounded response excerpt) is read on request and never stored. Opening a response bookmark resumes its conversation, not an exact-message scroll position.
 
-Use checkboxes for removal. **Select page** selects that page only. Selection can span pages, up to 100 bookmarks. Changing filters or refreshing clears it. Review **Remove selected bookmarks**, then confirm **Remove metadata**.
+Use checkboxes for removal. The checkbox above the list selects the loaded bookmarks only; **Show more** loads further ones. A selection holds up to 100 bookmarks. Changing filters or refreshing clears it. Review **Remove selected bookmarks**, then confirm.
 
 Bulk removal is all-or-nothing if any selected ID/revision changed. It deletes only annotation records. There is no Trash, Archive, or recovery timer. Never delete the native conversation as a workaround for a stale bookmark.
 
 ## Change display preferences
 
-Open **Bookmark settings** from the collection or the native Bookmarks settings page. **Show notes in list** and **Show source status in list** save immediately when changed. They do not remove notes, references, or inspector information.
+Open **Bookmark settings** from the collection or the native Bookmarks settings page. **Show notes in list** and **Show source status in list** save immediately when changed. They do not remove notes, references, or anything shown in the details pane.
 
-The editor's separate **Context** preference controls draft generation, not transcript retention. Default is 10 previous exchanges, with 5, 10, 20, and 50 available in the UI.
+The editor's separate context choice beside **Draft with AI** controls drafting, not transcript retention. Default is 10 previous exchanges, with 5, 10, 20, and 50 available in the UI.
 
 ## Back up or erase annotations
 
