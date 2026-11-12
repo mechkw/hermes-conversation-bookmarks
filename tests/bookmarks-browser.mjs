@@ -164,8 +164,13 @@ export async function collectionCases(page, adapter, api, proof, sourceBank) {
     const order = await page.locator('.cb-row-title').allTextContents();
     expect(order.indexOf(set[1].title)).toBeLessThan(order.indexOf(set[0].title));
     await page.getByRole('button', {name: /^Sort:/}).click();
-    await page.getByRole('menuitem', {name: 'Newest first', exact: true}).click();
-    await expect.poll(async () => (await page.locator('.cb-row-title').allTextContents())[0]).toBe(set[2].title);
+    // Wait for the re-sorted list itself: rows that move in the DOM would drop keyboard focus mid-step.
+    await Promise.all([
+      page.waitForResponse(response => response.url().includes(prefix + '/entries?') && response.url().includes('sort=newest')),
+      page.getByRole('menuitem', {name: 'Newest first', exact: true}).click()
+    ]);
+    await expect(page.getByRole('list', {name: 'Bookmarks'})).not.toHaveAttribute('aria-busy', 'true');
+    await expect.poll(async () => (await page.locator('.cb-row-title').allTextContents()).slice(0, 3)).toEqual([set[2].title, set[1].title, set[0].title]);
     // Stored text is always rendered as text.
     await expect(row(page, set[2].title)).toBeVisible();
     expect(await page.evaluate(() => window.evil)).toBeUndefined();

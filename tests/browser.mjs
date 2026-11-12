@@ -1,6 +1,4 @@
-// The former standalone harness mocked host controls and asserted retired
-// raw-ID/44px styling. Its metadata regressions now live in metadata-browser.mjs
-// alongside selector-browser.mjs, both run through real components and loaders.
-// Keep this npm test:browser entrypoint; paired sources are preflighted by runner.
+// `npm run test:browser`: the both-plugins scenario of the paired matrix, on both
+// hosts and both load orders. `npm run test:saved` runs every scenario.
 process.env.SAVED_SCENARIOS ||= 'both';
 await import('./saved-browser.mjs');
