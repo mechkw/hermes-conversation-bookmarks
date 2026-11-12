@@ -113,7 +113,7 @@ class GenerationTests(unittest.TestCase):
         self.assertIn('AS A WHOLE', self.calls[-1]['instructions'])
         # Omitting the field means the same thing; a chosen response keeps its own wording.
         self.assertEqual(self.client.post('/generation/draft', json={'session_id': 'fictional-a'}).status_code, 200)
-        self.assertEqual(self.generate().json()['context']['scope'], 'response')
+        self.assertEqual(self.generate().json()['context'], {'previous_exchanges': 5, 'requested_exchanges': 5, 'truncated': False})
         self.assertIn('FINAL assistant response', self.calls[-1]['instructions'])
         self.assertNotIn('AS A WHOLE', self.calls[-1]['instructions'])
         # A newest response that is hidden or private is skipped, never sent.

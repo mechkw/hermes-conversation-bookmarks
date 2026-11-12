@@ -1302,7 +1302,9 @@ async def generate_draft(request: GenerationRequest, store: Store = Depends(stor
             with _runtime.lock:
                 if _runtime.bindings.get(home) is not ctx:
                     raise HTTPException(409, 'Plugin changed while generating. Retry to make a new draft.')
-            return {'draft': draft, 'context': dict(info, scope='response' if request.message_id is not None else 'conversation')}
+            # A chosen response keeps its established context shape; a whole-conversation
+            # draft additionally names its scope and the response it ended at.
+            return {'draft': draft, 'context': info if request.message_id is not None else dict(info, scope='conversation')}
     except HTTPException:
         raise
     except TimeoutError:
