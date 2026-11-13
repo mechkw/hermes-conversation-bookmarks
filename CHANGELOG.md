@@ -4,6 +4,21 @@ Release tags identify published versions. Unreleased notes describe source chang
 
 ## Unreleased
 
+## 0.2.2 - 2026-11-13
+
+### Changed
+
+- **Find a bookmark mentions by default.** Clicking a row, or pressing Enter, now adds the bookmark to the message you are writing. Each row has **Go to** and **Mention** buttons on the right, with tooltips; the modifier with Enter goes to the conversation. In a narrow dialog the buttons keep their icons and drop the words.
+
+### Fixed
+
+- **Nothing scrolls sideways.** Find a bookmark (the composer's **+** menu) no longer needs a horizontal scrollbar: its footer wraps, and the shortcut hints move to a second row when the dialog is too narrow for one. The same treatment applies across the plugin: the toolbar, selection bar, details header, field headers, the chosen-conversation card and the editor footer all wrap instead of overflowing, and menus never exceed the window.
+- **Shortcut hints stay visible in ordinary windows.** They were hidden below 820px of window width; they now wrap instead and are dropped only at phone width (480px).
+
+### Changed
+
+- `scripts/preview.mjs` checks every shot for sideways overflow and fails if it finds any; `PREVIEW_WIDTHS=760,420` repeats each shot at other window widths.
+
 ## 0.2.1 - 2026-11-12
 
 ### Fixed

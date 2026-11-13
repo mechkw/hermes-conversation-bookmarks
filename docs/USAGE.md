@@ -104,8 +104,9 @@ In native Desktop you can also run **Bookmark this conversation** from the comma
 Native Desktop has a quick finder: choose **Bookmarks** in the composer's **+** menu, or run **Find a bookmark** from the command palette.
 
 - Type to search titles, notes, and tags. Use the arrow keys to move.
-- **Enter** returns to that bookmark's conversation.
-- **Ctrl+Enter** (⌘+Enter) writes a short mention of the bookmark, with its reference and note, into the message you are composing, so the agent can look it up. Nothing is sent until you send the message.
+- **Enter**, or a click on the row, writes a short mention of the bookmark, with its reference and note, into the message you are composing, so the agent can look it up. Nothing is sent until you send the message.
+- **Ctrl+Enter** (⌘+Enter) goes to that bookmark's conversation.
+- Each row also has **Go to** and **Mention** buttons on the right.
 - **Bookmark this conversation** and **All bookmarks** are at the bottom.
 
 Conversations that have bookmarks show a small bookmark mark on their sidebar row. Select it to open **Saved** filtered to that conversation; select the **This conversation** chip to clear the filter.

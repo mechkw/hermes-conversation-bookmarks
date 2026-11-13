@@ -761,7 +761,7 @@ export async function desktopCases(page, api) {
     expect((await area('palette')).find(item => item.label === 'Bookmark this conversation').action).toBe('conversation-bookmarks.save');
     expect((await area('composer.attachments')).map(item => item.label)).toEqual(['Bookmarks']);
 
-    // Quick find: type, arrow, Enter returns to the conversation.
+    // Quick find: type, arrow, Enter mentions the bookmark in the message being written.
     await run('composer.attachments', 'label', 'Bookmarks');
     const quick = page.getByRole('dialog', {name: 'Find a bookmark'});
     const search = quick.getByRole('textbox');
@@ -772,23 +772,42 @@ export async function desktopCases(page, api) {
     await expect(quick.getByRole('option').first()).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('ArrowDown');
     await expect(quick.getByRole('option', {name: /Quick alpha/})).toHaveAttribute('aria-selected', 'true');
-    // The modifier mentions the bookmark in the message being written instead.
-    await page.keyboard.press('Control+Enter');
+    await page.keyboard.press('Enter');
     await expect(quick).toHaveCount(0);
     expect(await page.evaluate(() => window.__QA_INSERTED__.at(-1).text)).toBe('Bookmark “Quick alpha” (conversation ' + SESSION + ')\nNote: First fictional note');
     await run('palette', 'label', 'Find a bookmark');
     await search.fill('quick beta');
     await expect(quick.getByRole('option')).toHaveCount(1);
+    // The modifier goes to the conversation instead.
     await page.evaluate(() => { window.__QA_OPENED__ = null; });
-    await page.keyboard.press('Enter');
+    await page.keyboard.press('Control+Enter');
     await expect(quick).toHaveCount(0);
     expect(await page.evaluate(() => window.__QA_OPENED__)).toEqual({id: SESSION, options: {profile: 'default', expectHistory: true}});
+    // Each row carries both actions as buttons; clicking the row itself mentions.
+    await run('palette', 'label', 'Find a bookmark');
+    await search.fill('quick beta');
+    const betaRow = quick.getByRole('option', {name: /Quick beta/});
+    await expect(betaRow.getByRole('button')).toHaveText(['Go to', 'Mention']);
+    await page.evaluate(() => { window.__QA_OPENED__ = null; });
+    await betaRow.getByRole('button', {name: 'Go to', exact: true}).click();
+    await expect(quick).toHaveCount(0);
+    expect(await page.evaluate(() => window.__QA_OPENED__)).toEqual({id: SESSION, options: {profile: 'default', expectHistory: true}});
+    await run('palette', 'label', 'Find a bookmark');
+    await search.fill('quick alpha');
+    const inserted = await page.evaluate(() => window.__QA_INSERTED__.length);
+    await quick.getByRole('option', {name: /Quick alpha/}).getByRole('button', {name: 'Mention', exact: true}).click();
+    await expect(quick).toHaveCount(0);
+    await run('palette', 'label', 'Find a bookmark');
+    await search.fill('quick alpha');
+    await quick.getByRole('option', {name: /Quick alpha/}).getByText('First fictional note').click();
+    await expect(quick).toHaveCount(0);
+    expect(await page.evaluate(() => window.__QA_INSERTED__.length)).toBe(inserted + 2);
     // With no chat to write into, the dialog says so and stays.
     await run('palette', 'label', 'Find a bookmark');
     await page.evaluate(() => { window.__QA_NO_COMPOSER__ = true; });
     await search.fill('quick alpha');
     await expect(quick.getByRole('option')).toHaveCount(1);
-    await page.keyboard.press('Control+Enter');
+    await page.keyboard.press('Enter');
     await expect(quick.getByRole('alert')).toContainText('Open a chat to mention this bookmark.');
     await page.evaluate(() => { window.__QA_NO_COMPOSER__ = false; });
     await quick.getByRole('button', {name: 'All bookmarks', exact: true}).click();

@@ -6,7 +6,9 @@
  * Needs the same local setup as the browser regressions (docs/SAVED_UI.md):
  * HERMES_SOURCE, PYTHON, and the companion repository next to this one.
  * PREVIEW_ONLY=name,name limits the shots; PREVIEW_SKIN picks a built-in skin;
- * PREVIEW_MODES=light,dark picks appearances; PREVIEW_CROP=1 crops dialogs.
+ * PREVIEW_MODES=light,dark picks appearances; PREVIEW_CROP=1 crops dialogs;
+ * PREVIEW_WIDTHS=760,420 repeats every shot at those window widths. Every
+ * shot is checked for sideways overflow, and any found fails the run.
  */
 import {execFileSync} from 'node:child_process';
 import {mkdir, readdir, realpath} from 'node:fs/promises';
@@ -84,13 +86,52 @@ with sqlite3.connect(sys.argv[1]) as db:
 }
 
 const shots = [];
+const widths = (process.env.PREVIEW_WIDTHS || '').split(',').filter(Boolean).map(Number);
+const spills = [];
+
+/** Anything that scrolls sideways or pokes out of its dialog or the window. */
+async function audit(page, label) {
+  const found = await page.evaluate(() => {
+    const out = [], view = document.documentElement.clientWidth;
+    const describe = el => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : ''}`;
+    if (document.documentElement.scrollWidth > view + 1) out.push(`window scrolls sideways (${document.documentElement.scrollWidth} > ${view})`);
+    const seen = new Set();
+    for (const root of document.querySelectorAll('.cb,.cb-dialog,.cb-menu,.hs-saved')) {
+      for (const el of [root, ...root.querySelectorAll('*')]) {
+        if (seen.has(el)) continue;
+        seen.add(el);
+        const box = el.getBoundingClientRect();
+        if (box.width < 2 || box.height < 2) continue;
+        if (/(auto|scroll)/.test(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1) out.push(`${describe(el)} scrolls sideways (${el.scrollWidth} > ${el.clientWidth})`);
+        const frame = el.closest('[role="dialog"]')?.getBoundingClientRect();
+        const left = frame ? frame.left : 0, right = Math.min(view, frame ? frame.right : view);
+        if (box.right > right + 1 || box.left < left - 1) out.push(`${describe(el)} spills out (${Math.round(box.left)}..${Math.round(box.right)} outside ${Math.round(left)}..${Math.round(right)})`);
+      }
+    }
+    return [...new Set(out)];
+  });
+  for (const line of found) spills.push(`${label}: ${line}`);
+}
+
 async function shoot(page, name, mode, dialog = false) {
   if (only && !only.includes(name)) return;
   const file = join(out, `${name}-${mode}.png`);
+  await audit(page, `${name} ${mode}`);
   // PREVIEW_CROP=1 saves dialogs on their own, for documentation.
   if (dialog && process.env.PREVIEW_CROP) await page.getByRole('dialog').screenshot({path: file});
   else await page.screenshot({path: file});
   shots.push(file);
+  // PREVIEW_WIDTHS=760,420 repeats the same state at other window widths.
+  if (!widths.length) return;
+  const size = page.viewportSize();
+  for (const width of widths) {
+    await page.setViewportSize({width, height: size.height});
+    await page.waitForTimeout(200);
+    await audit(page, `${name} ${mode} at ${width}px`);
+    await page.screenshot({path: join(out, `${name}-${mode}-w${width}.png`)});
+  }
+  await page.setViewportSize(size);
+  await page.waitForTimeout(200);
 }
 
 try {
@@ -194,6 +235,8 @@ try {
     await context.close();
   }
   console.log(`Preview: ${shots.length} desktop shots (+ dashboard) in ${out}`);
+  if (spills.length) { console.log(`Sideways overflow (${spills.length}):\n` + spills.join('\n')); process.exitCode = 1; }
+  else console.log('No sideways overflow.');
 } catch (error) {
   console.error(error, harness.logs.slice(-2000));
   process.exitCode = 1;

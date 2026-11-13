@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, ErrorNote, Icon, Kbd, SearchField, Skeleton } from '@saved/presentation';
+import { Badge, Button, Dialog, EmptyState, ErrorNote, Icon, Kbd, SearchField, Skeleton, Tip } from '@saved/presentation';
 import { chatReference, cx, errorMessage, isResponse, modKey, shortAge, sourceProblem } from './lib.js';
 
 /**
- * Find a bookmark without leaving the chat: type, arrow, Enter. Enter returns
- * to the conversation; the modifier inserts a mention into the message being
- * written. Saving the current conversation is one more row at the bottom.
+ * Find a bookmark without leaving the chat: type, arrow, Enter. Enter (or a
+ * click on the row) mentions the bookmark in the message being written; the
+ * modifier goes to its conversation. Each row also carries both as buttons.
+ * Saving the current conversation is one more row at the bottom.
  */
 export function QuickBookmarks({ api, close, onBrowse, onSaveCurrent }) {
   const [query, setQuery] = useState('');
@@ -47,12 +48,14 @@ export function QuickBookmarks({ api, close, onBrowse, onSaveCurrent }) {
     if (await api.insertText(chatReference(entry))) { api.notify?.('Added to your message.'); close(); }
     else if (alive.current) setError('Open a chat to mention this bookmark.');
   }
+  // Mentioning is the default wherever there is a message to write into.
+  const primary = entry => (api.insertText ? mention(entry) : api.openSession ? open(entry) : undefined);
   const onKeyDown = event => {
     if (event.key === 'ArrowDown') { event.preventDefault(); setIndex(n => Math.min(items.length - 1, n + 1)); }
     else if (event.key === 'ArrowUp') { event.preventDefault(); setIndex(n => Math.max(0, n - 1)); }
     else if (event.key === 'Enter' && items[index]) {
       event.preventDefault();
-      if ((event.metaKey || event.ctrlKey) && api.insertText) mention(items[index]); else if (api.openSession) open(items[index]);
+      if ((event.metaKey || event.ctrlKey) && api.openSession) open(items[index]); else primary(items[index]);
     }
   };
   return (
@@ -68,11 +71,11 @@ export function QuickBookmarks({ api, close, onBrowse, onSaveCurrent }) {
           ) : items.map((entry, n) => {
             const problem = sourceProblem(entry.source_status);
             return (
-              <button
-                key={entry.id} type="button" role="option" aria-selected={n === index}
+              <div
+                key={entry.id} role="option" aria-selected={n === index}
                 className={cx('cb-option cb-quick-option', n === index && 'cb-option-on')}
                 onMouseMove={() => setIndex(n)}
-                onClick={() => (api.openSession ? open(entry) : mention(entry))}
+                onClick={() => primary(entry)}
               >
                 <Icon name={isResponse(entry) ? 'comment' : 'comment-discussion'} className="cb-quick-icon" />
                 <span className="cb-option-text">
@@ -83,18 +86,33 @@ export function QuickBookmarks({ api, close, onBrowse, onSaveCurrent }) {
                   {problem && <Badge tone="warn">Unavailable</Badge>}
                   <time>{shortAge(entry.created)}</time>
                 </span>
-              </button>
+                <span className="cb-quick-actions" onClick={event => event.stopPropagation()}>
+                  {api.openSession && (
+                    <Tip label={problem ? 'This conversation is no longer available' : 'Go to this conversation'}>
+                      <Button variant="ghost" size="xs" icon="arrow-right" aria-label="Go to" disabled={working || Boolean(problem)} onClick={() => open(entry)}>
+                        <span className="cb-quick-action-text">Go to</span>
+                      </Button>
+                    </Tip>
+                  )}
+                  {api.insertText && (
+                    <Tip label="Mention this bookmark in your message">
+                      <Button variant="ghost" size="xs" icon="mention" aria-label="Mention" disabled={working} onClick={() => mention(entry)}>
+                        <span className="cb-quick-action-text">Mention</span>
+                      </Button>
+                    </Tip>
+                  )}
+                </span>
+              </div>
             );
           })}
         </div>
         <footer className="cb-quick-foot">
           {onSaveCurrent && <Button variant="ghost" size="sm" icon="add" onClick={onSaveCurrent}>Bookmark this conversation</Button>}
           <Button variant="ghost" size="sm" icon="bookmark" onClick={onBrowse}>All bookmarks</Button>
-          <span className="cb-spacer" />
           {items.length > 0 && (
             <span className="cb-faint cb-quick-keys">
-              {api.openSession && <><Kbd>↵</Kbd> Open</>}
-              {api.insertText && <><Kbd>{modKey()}</Kbd><Kbd>↵</Kbd> Mention in chat</>}
+              {api.insertText && <span className="cb-quick-key"><Kbd>↵</Kbd> Mention</span>}
+              {api.openSession && <span className="cb-quick-key">{api.insertText && <Kbd>{modKey()}</Kbd>}<Kbd>↵</Kbd> Go to</span>}
             </span>
           )}
         </footer>

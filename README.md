@@ -108,7 +108,7 @@ Everything works from the keyboard: `/` to search, arrows to browse, `N` for a n
 
 In native Desktop:
 
-- **+ → Bookmarks** in the composer, or **Find a bookmark** in the command palette, opens a quick finder. Type, arrow, Enter returns to that conversation. Ctrl+Enter (⌘+Enter) mentions the bookmark in the message you are writing.
+- **+ → Bookmarks** in the composer, or **Find a bookmark** in the command palette, opens a quick finder. Type, arrow, Enter mentions the bookmark in the message you are writing; so does clicking its row. Ctrl+Enter (⌘+Enter) goes to that conversation, and every row has **Go to** and **Mention** buttons.
 - **Bookmark this conversation** in the command palette, or Ctrl+Alt+B (⌘⌥B), opens the editor on the chat you are in.
 - Conversations that have bookmarks carry a small mark in the sidebar. Select it to see just those bookmarks.
 
