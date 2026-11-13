@@ -44,9 +44,11 @@ navigation: update both packages for coordinated Saved navigation.
 
 ## Scope and lifecycle
 
-`ui/saved-coordinator.js`, `ui/Saved.jsx`, and `ui/saved.css` are mirrored protocol-v1
-sources in both repositories. Neither build needs the other repository. Keep
-those files byte-identical when changing the shared contract. The Desktop hub
+`ui/saved-coordinator.js` and `ui/Saved.jsx` are mirrored protocol-v1 sources in
+both repositories and must stay byte-identical; the paired runner refuses to
+start otherwise. Neither build needs the other repository. `ui/saved.css` and the
+`CollectionTabs` adapter are each package's own presentation of that shell: the
+Saved page is drawn by whichever plugin owns the route (Bookmarks when present). The Desktop hub
 is keyed by the host SDK object; Dashboard hubs are keyed by the profile from
 the native script loader. Disposed providers cannot dispatch new requests.
 Desktop responses are fenced against profile, connection and disposal changes;
@@ -79,28 +81,20 @@ SAVED_PEER_REPO=/path/to/the-other-repository \
 SAVED_PROOF_DIR=/path/to/fictional-proof npm run test:saved
 ```
 
-`test:browser` preserves the existing single-plugin CRUD, conflict, tag,
-preview/download or session-open, theme, responsive and stale-callback tests.
-Screenshots now default to the disposable test directory instead of overwriting
-approved artwork. Set `SHELF_SCREENSHOT_DIR` / `BOOKMARKS_SCREENSHOT_DIR` to retain
-them explicitly.
+`npm run test:contract` checks the static UI contract: only the two `presentation.*` adapters touch a host UI kit, stylesheets use host tokens and never select app markup, and bundles ship no second runtime or remote code. `scripts/verify.sh` also runs the host's own desktop-surface lint over `desktop/plugin.js`.
 
-`test:saved` has 34 cases: the original 24 matched frontend/backend states
-(both enabled, either alone/disabled, both disabled across both hosts/load orders),
-plus 10 independently activated Desktop cases: both UIs with either/both
-backends disabled, and either UI alone with both backends enabled, both orders.
-These assert quiet CTAs and actual native backend re-enable → Retry recovery.
-Both-host cases also inject 401/403/503/network status faults and retry; Desktop
-checks discard delayed old-connection probes. Dashboard checks collapse/expand
-visibility using the official shell boundary (not the full shell).
-It uses real React/Chromium, the official Dashboard loader/slot registry, the
-Desktop runtime loader/contribution registry/plugin inventory toggles, and real
-native authenticated backend routes with fictional SQLite stores. It verifies
-independent UI edits with API readback, 401/404 admission, one/no Saved link,
-Desktop live disable/re-enable/reload/unload, Dashboard link navigation, scope
-clearing/recovery, keyboard tabs and 360/768/1440 layouts. Results include host
-commit, browser version and frontend file hashes. Temporary servers, bundles
-and fictional homes are cleaned in finally blocks.
+`tests/harness.mjs` is the shared browser harness: real React and Chromium, the official Dashboard loader/slot registry, the Desktop runtime loader/contribution registry, the real Hermes UI components compiled from the host checkout, and the native authenticated backend over a fictional profile. `test:browser` runs the both-plugins scenario; `test:saved` runs the whole matrix. Bookmarks cases live in `tests/bookmarks-browser.mjs`:
+
+- **Collection:** independent inspect/select, selection across loaded pages, cancel and confirmed bulk removal with API readback and an untouched native source, display settings, type/tag/search/sort filters, escaped text, keyboard, row and context menus, outage and retry.
+- **Inspector:** on-request source context, quoted named-profile resume command, copy, open with recheck, pruned-source flag with editable annotations.
+- **Editor:** picker flow, search races, errors/retry/empty, response scope reset, tag chips, modifier-save, readback, conflict with retained draft, removal error/cancel/readback, focus return, and 360 px bounds.
+- **AI draft:** explicit click only, persisted presets, review-only result, edit and scope fences, failure and retry.
+- **Fences:** a save, source search, or draft in flight when the profile, connection, or plugin goes away issues no follow-up request and paints nothing late.
+- **Desktop integrations:** palette rows and the shared-action shortcut, quick finder open/mention, save from the focused chat, live refresh, sidebar marks, profile isolation.
+
+`npm run preview [dir]` uses the same harness to save screenshots of the main states in a light and a dark built-in skin, with fictional data. Screenshots and proofs default to disposable directories; set `SAVED_PROOF_DIR` to keep them.
+
+`test:saved` has 34 cases: 24 matched frontend/backend states (both enabled, either alone/disabled, both disabled across both hosts/load orders), plus 10 independently activated Desktop cases. These assert quiet CTAs and actual native backend re-enable → Retry recovery. Both-host cases also inject 401/403/503/network status faults and retry; Desktop checks discard delayed old-connection probes. It verifies independent UI edits with API readback, 401/404 admission, one/no Saved link, Desktop live disable/re-enable/reload/unload, Dashboard link navigation, scope clearing/recovery, keyboard tabs and 360/768/1440 layouts. Results include host commit, browser version and frontend file hashes. Temporary servers, bundles and fictional homes are cleaned in finally blocks.
 
 **Evidence boundary:** host state/IPC, SDK transport wiring and the surrounding
 shell are test boundaries. This is native-loader/browser QA, not a full Electron

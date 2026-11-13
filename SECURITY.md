@@ -16,7 +16,9 @@ Bookmarks belong to the backend profile, including a remote backend. Clients sha
 
 Ordinary source validation reads identifiers and ownership. Requested source choosers read bounded session labels and visible assistant-response previews through a plugin-owned read-only native adapter. They do not create or migrate the native source store. Missing or unsupported schemas fail rather than becoming permission to search elsewhere.
 
-Explicit editor **Generate details** sends the selected response, its preceding user request, and bounded earlier eligible exchanges to Hermes's configured model service. It excludes later conversation text and recognized private/tool/reasoning carriers. The collector cannot infer provenance the host did not preserve, such as arbitrary unmarked third-party injected text. Generation returns a draft only; saving remains explicit. Provider processing, costs, and retention policies apply.
+The details pane reads one conversation title and, for a response bookmark, one bounded excerpt of that visible assistant response each time a bookmark is selected, through the same read-only adapter and eligibility rules as the chooser. The excerpt is returned to the requesting client and is never written to the bookmark store.
+
+Explicit editor **Draft with AI** sends the selected response, its preceding user request, and bounded earlier eligible exchanges to Hermes's configured model service. It excludes later conversation text and recognized private/tool/reasoning carriers. The collector cannot infer provenance the host did not preserve, such as arbitrary unmarked third-party injected text. Generation returns a draft only; saving remains explicit. Provider processing, costs, and retention policies apply.
 
 An explicit slash save with omitted metadata can queue the current agent through `PluginContext.inject_message`. That workflow uses context already available to the agent, not the editor's selected-response cutoff. Gateway-assisted handoff needs explicit profile-local `plugins.entries.conversation-bookmarks.allow_gateway_injection`. The plugin does not grant itself permission. Queue acceptance is not a successful save.
 

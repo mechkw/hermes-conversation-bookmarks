@@ -8,11 +8,15 @@ export const uiExports={
  'components/ui/textarea':['Textarea'],'components/ui/search-field':['SearchField'],
  'components/ui/select':['Select','SelectTrigger','SelectValue','SelectContent','SelectItem'],
  'components/ui/dialog':['Dialog','DialogContent','DialogHeader','DialogTitle','DialogDescription','DialogFooter'],
- 'components/ui/tooltip':['Tooltip','TooltipProvider','TooltipTrigger','TooltipContent'],
+ 'components/ui/tooltip':['Tip','Tooltip','TooltipProvider','TooltipTrigger','TooltipContent'],
  'components/ui/tabs':['Tabs','TabsList','TabsTrigger'],
  'components/ui/empty-state':['EmptyState'],'components/ui/error-state':['ErrorState'],
- 'components/ui/loader':['Loader'],'app/settings/primitives':['ListRow'],
+ 'components/ui/loader':['Loader'],'app/settings/primitives':['ListRow','ToggleRow'],
  'components/ui/segmented-control':['SegmentedControl'],
+ 'components/ui/badge':['Badge'],'components/ui/skeleton':['Skeleton'],'components/ui/kbd':['Kbd'],
+ 'components/ui/copy-button':['CopyButton'],'components/ui/confirm-dialog':['ConfirmDialog'],
+ 'components/ui/dropdown-menu':['DropdownMenu','DropdownMenuContent','DropdownMenuItem','DropdownMenuSeparator','DropdownMenuTrigger'],
+ 'components/ui/context-menu':['ContextMenu','ContextMenuContent','ContextMenuItem','ContextMenuSeparator','ContextMenuTrigger'],
 };
 export async function realUI(source){
  const names=Object.values(uiExports).flat(),index=await readFile(join(source,'apps/desktop/src/sdk/index.ts'),'utf8');

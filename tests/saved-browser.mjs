@@ -1,145 +1,35 @@
-/* Native loaders, real React, native authenticated Python API, fictional bank.
- * SDK host state/IPC boundaries are doubles; UI-kit implementations are real; this is NOT Electron QA.
+/* Paired Saved regression matrix: native loaders, real React, the real Hermes UI kit,
+ * the native authenticated Python API, and a fictional profile. The shared harness
+ * (harness.mjs) owns the host doubles; this is NOT Electron QA.
  */
-import {build} from 'esbuild';
-import {createRequire} from 'node:module';
-import {realUI} from './native-components.mjs';
-import {metadataCases,pendingMutationCases,sourceFenceCases} from './metadata-browser.mjs';
-import {selectorCases} from './selector-browser.mjs';
-import {contestCases} from './contest-browser.mjs';
+import {collectionCases,inspectorCases,editorCases,generationCases,fenceCases,desktopCases} from './bookmarks-browser.mjs';
+import {metadataCases,pendingMutationCases} from './metadata-browser.mjs';
 import {candidateShelfCases,editCandidateSeed,candidateShelfFences} from './candidate-shelf-browser.mjs';
-import {generationCases} from './generation-browser.mjs';
-import {editorUXCases} from './editor-ux-browser.mjs';
-import {sourceDetailCases,titleBoundsCases,focusEditorCases} from './review-browser.mjs';
+import {titleBoundsCases,focusEditorCases} from './review-browser.mjs';
 import {sourceFixture} from './native-source-fixture.mjs';
-import {mkdtemp, readFile, rm, mkdir, writeFile} from 'node:fs/promises';
+import {createHarness,root,peer,source,auth} from './harness.mjs';
+import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
-import {spawn,execFileSync} from 'node:child_process';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {createServer} from 'node:net';
-import {chromium,expect} from '@playwright/test';
+import {expect} from '@playwright/test';
 
-const root=resolve('.');
-const source=process.env.HERMES_SOURCE||join(process.env.HOME,'.hermes/hermes-agent');
 const proof=process.env.SAVED_PROOF_DIR||join(process.env.TMPDIR||tmpdir(),'saved-ui-proof');
 await mkdir(proof,{recursive:true});
-const peer=process.env.SAVED_PEER_REPO||resolve(root,'..',root.endsWith('bookmarks')?'hermes-delivery-shelf':'hermes-conversation-bookmarks');
 const shelfRepo=root.endsWith('bookmarks')?peer:root;
 const nativeShelfSource=(await readFile(join(shelfRepo,'ui/desktop.jsx'),'utf8')).includes("from './NativeShelf.jsx'");
 const entryButton=(page,id,title,adapter)=>page.getByRole('button',{name:adapter==='desktop'&&nativeShelfSource&&id==='delivery-shelf'?'Collapse '+title:title,exact:true});
 const savedButtons=page=>page.getByRole('button',{name:/^(Collapse )?Saved (conversation-bookmarks|delivery-shelf)$/});
-// Fail before starting a browser/server, rather than silently testing old or absent UI.
-for(const repo of [root,peer]){
- try{for(const file of ['ui/Saved.jsx','desktop/plugin.js','dashboard/dist/index.js','tests/saved-browser.mjs'])await readFile(join(repo,file));}
- catch{throw new Error('Paired Saved verification requires both built local repositories. Set SAVED_PEER_REPO; see docs/SAVED_UI.md. Missing inputs in '+repo);}
-}
-// The shared UI protocol must match; each product owns its scenario extensions.
+// The shared Saved protocol must match; each product owns its own page and scenarios.
 for(const file of ['ui/Saved.jsx','ui/saved-coordinator.js']){
  if(!(await readFile(join(root,file))).equals(await readFile(join(peer,file))))throw new Error('Paired Saved revisions differ: '+file+'. Build matching local changes; CI does not fetch an unpublished companion. See docs/SAVED_UI.md.');
 }
-const scratch=await mkdtemp(join(process.env.TMPDIR||tmpdir(),'q-'));
-const port=await new Promise(r=>{const s=createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});
-const ui=await realUI(source);
-const requireHost=createRequire(join(source,'package.json'));
-const common=`import React from 'react';import {createRoot} from 'react-dom/client';
-window.__QA_REACT__=React;
-const root=createRoot(document.getElementById('root'));
-window.__QA_REQUESTS__=[];
-async function fetchJSON(path,opts={}) {
- window.__QA_REQUESTS__.push({path,method:opts.method||'GET'});
- const response=await fetch(path,{...opts,headers:{...opts.headers,'X-Hermes-Session-Token':'fictional-test-session'}});
- const data=await response.json();if(!response.ok){
-  if(location.pathname.startsWith('/qa/desktop'))throw new Error("Error invoking remote method 'hermes:api': Error: "+response.status+': '+JSON.stringify(data));
-  throw Object.assign(new Error(typeof data.detail==='string'?data.detail:'Request refused'),{status:response.status});
- }return data;
-}
-window.__QA_FETCH__=fetchJSON;
-`;
-const apiStub=`export const HERMES_BASE_PATH='';export const fetchJSON=(...a)=>window.__QA_FETCH__(...a);export const authedFetch=fetchJSON;export const buildWsUrl=()=>'';export const buildWsAuthParam=()=>'';export const api={getPlugins:async(profile)=>(await fetchJSON('/api/dashboard/plugins?profile='+profile))};`;
-const dashEntry=common+`
-import {exposePluginSDK,getPluginComponent,onPluginRegistered} from '${source}/web/src/plugins/registry.ts';
-import {PluginSlot} from '${source}/web/src/plugins/slots.ts';
-import {usePlugins} from '${source}/web/src/plugins/usePlugins.ts';
-${ui.dashboardBootstrap}
-exposePluginSDK();
-function App(){
- const [profile,setProfile]=React.useState('default');window.__QA_PROFILE__=setProfile;
- const [collapsed,setCollapsed]=React.useState(false);window.__QA_COLLAPSE__=setCollapsed;
- const {manifests,loading}=usePlugins(profile);window.__QA_MANIFESTS__=manifests;window.__QA_READY__=!loading;
- const name=manifests.find(m=>m.tab.path===location.pathname)?.name||manifests[0]?.name;
- const Component=React.useSyncExternalStore(onPluginRegistered,()=>getPluginComponent(name)||null);
- // Official App.tsx:577 banner is outside sidebar; :612-618 hides header-left.
- return <><nav aria-label="Native banner slot"><PluginSlot name="header-banner"/></nav><aside><div style={{display:collapsed?'none':'flex'}}><PluginSlot name="header-left"/></div></aside>{Component?<Component/>:<p>Native Dashboard loader…</p>}</>;
-}
-root.render(<App/>);
-window.__QA_UNMOUNT__=()=>root.unmount();
-`;
-const sdkStub=`${ui.imports}
-import React from 'react';import {atom} from 'nanostores';
-export const host={state:{profile:atom('default'),connectionId:atom('fixture'),focusedSessionOwner:atom({connectionId:'fixture',profile:'default'}),focusedStoredSessionId:atom('fictional-session-01')},navigate:path=>{window.__QA_NAVIGATED__=path;},openSession:async(id,options)=>{window.__QA_OPENED__={id,options};}};
-export const useValue=a=>React.useSyncExternalStore(a.subscribe,a.get,a.get);
-export {atom};export const COMPOSER_AREAS={attachments:'composer.attachments'},TITLEBAR_AREAS={center:'titleBar.center'},PALETTE_AREA='palette';
-export const ROUTES_AREA='routes',SIDEBAR_NAV_AREA='sidebar.nav';
-window.__QA_SDK__={host,useValue,atom,COMPOSER_AREAS,TITLEBAR_AREAS,PALETTE_AREA,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}};
-export function installPluginSdk(){}
-const blob=s=>URL.createObjectURL(new Blob([s],{type:'text/javascript'}));
-export const sdkImportMap=()=>({
- 'react':blob('export default window.__QA_REACT__;export const {useState,useEffect,useRef,useId,useMemo}=window.__QA_REACT__;'),
- '@hermes/plugin-sdk':blob('export const {host,useValue,atom,COMPOSER_AREAS,TITLEBAR_AREAS,PALETTE_AREA,ROUTES_AREA,SIDEBAR_NAV_AREA,${ui.names.join(',')}}=window.__QA_SDK__;')
-});`;
-const contextStub=`export const declaredCapabilities=()=>[];
-import {registry} from '${source}/apps/desktop/src/contrib/registry.ts';
-import {settingsPageContribution} from '${source}/apps/desktop/src/contrib/settings-pages.ts';
-export function createPluginContext(id,track){const registerMany=items=>{const dispose=registry.registerMany(items.map(c=>({...c,id:id+':'+c.id,source:'plugin:'+id})));track(dispose);return dispose;};return {registerMany,registerSettingsPage:page=>registerMany([settingsPageContribution(page)]),onDispose:track,os:{writeClipboard:async(text)=>{window.__QA_CLIPBOARD__=text;return true;}},rest:(path,opts={})=>window.__QA_FETCH__('/api/plugins/'+id+path,{method:opts.method||'GET',headers:opts.body?{'Content-Type':'application/json'}:undefined,body:opts.body?JSON.stringify(opts.body):undefined})};}`;
-const desktopEntry=common+`
-${ui.nativeBootstrap}
-import {loadRuntimePlugin,unloadRuntimePlugin} from '${source}/apps/desktop/src/contrib/runtime-loader.ts';
-import {registry,$registryVersion} from '${source}/apps/desktop/src/contrib/registry.ts';
-import {setPluginEnabled,$pluginRecords} from '${source}/apps/desktop/src/contrib/plugins-store.ts';
-window.__QA_REGISTRY__=registry;
-window.__QA_HISTORY__=[];
-registry.subscribe(()=>{window.__QA_HISTORY__.push({routes:registry.getArea('routes').length,nav:registry.getArea('sidebar.nav').length});});
-const fixture=await fetchJSON('/api/qa/fixture');
-const ids=new URLSearchParams(location.search).get('order')==='reverse'?[...fixture.installed].reverse():fixture.installed;
-const codes={};
-window.__QA_LOAD__=async(id)=>loadRuntimePlugin(codes[id],id,{file:'fixture/'+id+'/plugin.js',defaultEnabled:fixture.frontend.includes(id)});
-window.__QA_UNLOAD__=unloadRuntimePlugin;
-window.__QA_TOGGLE__=setPluginEnabled;
-window.__QA_RECORDS__=$pluginRecords;
-function App(){
- React.useSyncExternalStore($registryVersion.subscribe,$registryVersion.get,$registryVersion.get);
- const routes=registry.getArea('routes'),nav=registry.getArea('sidebar.nav');
- return <>{registry.getArea('titleBar.center').map(c=>React.createElement(c.render,{key:c.id}))}<nav aria-label="Native contributions">{nav.map(c=><a key={c.id} href={c.data.path}>{c.data.label}</a>)}</nav>{routes[0]?React.createElement(routes[0].render):<p>No active Saved plugins.</p>}</>;
-}
-root.render(<App/>);
-for(const id of ids){codes[id]=await (await fetch('/api/qa/desktop/'+id,{headers:{'X-Hermes-Session-Token':'fictional-test-session'}})).text();await window.__QA_LOAD__(id);}
-window.__QA_READY__=true;
-`;
-const stubPlugin={name:'host-boundary-doubles',setup(b){
- b.onResolve({filter:/^(react|react-dom|nanostores)(\/.*)?$/},args=>({path:requireHost.resolve(args.path)}));
- b.onResolve({filter:/^@\//},args=>{
-  if(args.path==='@/lib/keybinds/use-keybind-hint')return {path:'keybind',namespace:'qa'};
-  if(args.path==='@/hermes')return {path:'hermes',namespace:'qa'};
-  if(args.path==='@/sdk/runtime')return {path:'sdk',namespace:'qa'};
-  if(args.path==='@/lib/desktop-fs')return {path:'fs',namespace:'qa'};
-  if(args.path==='@/store/notifications')return {path:'notifications',namespace:'qa'};
-  if(args.importer.includes('/web/')){
-   if(args.path==='@/lib/api')return {path:'api',namespace:'qa'};
-   if(args.path==='@/lib/profile-bootstrap')return {path:'profile',namespace:'qa'};
-   if(args.path==='@/lib/utils')return {path:'utils',namespace:'qa'};
-   if(args.path==='@/i18n')return {path:'i18n',namespace:'qa'};
-  }
-  return b.resolve(join(source,'apps/desktop/src',args.path.slice(2)),{kind:args.kind,resolveDir:source});
- });
- b.onResolve({filter:/^\.\/(events|plugin)$/},args=>{
-  if(args.importer.endsWith('/contrib/runtime-loader.ts'))return {path:args.path.slice(2),namespace:'qa'};
- });
- b.onLoad({filter:/.*/,namespace:'qa'},args=>({contents:({keybind:'export const useKeybindHint=()=>null;',hermes:'export const getHermesConfigRecord=async()=>({}),retainConfigReadOrigin=x=>x,saveHermesConfig=async()=>({ok:true});',api:apiStub,profile:'export const dashboardServingProfile=()=>"default";',utils:'export const cn=(...a)=>a.join(" "),timeAgo=()=>"",isoTimeAgo=()=>"";',i18n:'export const useI18n=()=>({t:{}});',sdk:sdkStub,fs:'export const isReadFileErrorResult=()=>false;',notifications:'export const notifyError=(e)=>{throw e;};',events:'export const trackGatewayEventDisposers=(track,fn)=>fn();',plugin:contextStub})[args.path],loader:'js',resolveDir:root}));
-}};
+const harness=await createHarness();
+const {scratch,base}=harness;
+const BOOKMARK_FILES=['ui/Bookmarks.jsx','ui/BookmarkRow.jsx','ui/BookmarkInspector.jsx','ui/BookmarkEditor.jsx','ui/BookmarkSettings.jsx','ui/SourcePicker.jsx','ui/TagInput.jsx','ui/QuickBookmarks.jsx','ui/lib.js','telegram_bookmarks.py','dashboard/plugin_api.py','tests/bookmarks-browser.mjs','tests/harness.mjs'];
 const pins={};
-pins[join(root,'tests/candidate-shelf-browser.mjs')]=createHash('sha256').update(await readFile(join(root,'tests/candidate-shelf-browser.mjs'))).digest('hex');
-for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx',repo.endsWith('bookmarks')?'ui/Bookmarks.jsx':'ui/Shelf.jsx','tests/saved-browser.mjs','tests/saved_browser_server.py','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/collection-focus.js','ui/style.css',...(repo.endsWith('bookmarks')?['ui/BookmarkEditor.jsx','ui/BookmarkSettings.jsx','telegram_bookmarks.py','tests/contest-browser.mjs','tests/editor-ux-browser.mjs','tests/generation-browser.mjs','dashboard/plugin_api.py']:[]),'tests/review-browser.mjs','tests/selector-browser.mjs','tests/metadata-browser.mjs','tests/native-components.mjs'])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
+for(const repo of [root,peer])for(const file of ['desktop/plugin.js','dashboard/dist/index.js','dashboard/manifest.json','ui/Saved.jsx','ui/saved-coordinator.js','ui/saved.css','ui/desktop.jsx','ui/dashboard.jsx','ui/presentation.desktop.jsx','ui/presentation.dashboard.jsx','ui/style.css','tests/saved-browser.mjs','tests/saved_browser_server.py','tests/native-components.mjs',...(repo.endsWith('bookmarks')?BOOKMARK_FILES:['ui/Shelf.jsx']),...(repo===root?['tests/candidate-shelf-browser.mjs','tests/review-browser.mjs','tests/metadata-browser.mjs']:[])])pins[join(repo,file)]=createHash('sha256').update(await readFile(join(repo,file))).digest('hex');
 async function independentState(page,fixture,api,base,auth,scenario,order){
  await page.waitForFunction(()=>window.__QA_READY__);
  await expect(page.getByRole('link',{name:'Saved',exact:true})).toHaveCount(1);
@@ -206,21 +96,15 @@ async function availabilityFailures(page,adapter){
   await expect(page.getByRole('tab')).toHaveCount(2);
  }
 }
-let server,browser;
 const rows=[];
-const auth={'X-Hermes-Session-Token':'fictional-test-session','Content-Type':'application/json'};
-async function stop(){if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}server=null;}
+let logs='';
 try{
- for(const [name,contents] of [['dashboard',dashEntry],['desktop',desktopEntry]])await build({stdin:{contents,resolveDir:root,loader:'jsx'},outfile:join(scratch,name+'.js'),bundle:true,format:'esm',target:'es2022',nodePaths:[join(source,'node_modules'),join(root,'node_modules')],jsx:'automatic',loader:{'.css':'text','.woff2':'dataurl','.woff':'dataurl','.ttf':'dataurl','.svg':'dataurl'},define:{'import.meta.env.DEV':'false','process.env.NODE_ENV':'"production"'},plugins:[stubPlugin]});
- browser=await chromium.launch({headless:true});
- const base=`http://127.0.0.1:${port}`;
+ const browser=await harness.browser();
  for(const scenario of (process.env.SAVED_SCENARIOS?.split(',')||['both','conversation-bookmarks-only','delivery-shelf-only','conversation-bookmarks-disabled','delivery-shelf-disabled','both-disabled','ui-both--conversation-bookmarks-disabled','ui-both--delivery-shelf-disabled','ui-both--both-disabled','ui-bookmarks--both','ui-shelf--both'])){
-  server=spawn(process.env.PYTHON||'python',['tests/saved_browser_server.py',String(port),scratch,scenario],{cwd:root,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1',HERMES_SOURCE:source},stdio:['ignore','pipe','pipe']});
-  let logs='';server.stderr.on('data',b=>logs+=b);
-  for(let n=0;n<150;n++){try{if((await fetch(base+'/qa/dashboard')).ok)break;}catch{}if(server.exitCode!==null)throw new Error(logs);await new Promise(r=>setTimeout(r,100));if(n===149)throw new Error('Server failed: '+logs);}
+  await harness.start(scenario);logs=harness.logs;
   const sourceBank=scenario==='both'?await sourceFixture(scratch):null;
   const fixture=await (await fetch(base+'/api/qa/fixture',{headers:auth})).json();
-  const api=async(id,path,opts={})=>{const response=await fetch(base+'/api/plugins/'+id+path,{...opts,headers:auth});if(!response.ok)throw new Error(await response.text());return response.json();};
+  const api=harness.api;
   for(const id of ['conversation-bookmarks','delivery-shelf']){
    expect((await fetch(base+'/api/plugins/'+id+'/status')).status).toBe(401);
    if(!fixture.enabled.includes(id)){expect((await fetch(base+'/api/plugins/'+id+'/status',{headers:auth})).status).toBe(404);continue;}
@@ -287,8 +171,20 @@ try{
      expect(await page.locator('.hs-saved-tabs button,.hs-saved-missing button,.hs-saved-link').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height>0).every(n=>n.getBoundingClientRect().height>0))).toBe(true);
      await page.screenshot({path:join(proof,`${scenario}-${adapter}-${order}-${width}.png`),fullPage:true});
     }
-    if(fixture.enabled.includes('conversation-bookmarks')){const before=sourceBank?.snapshot();await contestCases(page,adapter,api,proof);if(sourceBank)expect(sourceBank.snapshot(),'Bookmark bulk removal must preserve source sessions/messages').toBe(before);}
-    if(scenario==='both'){await editorUXCases(page,adapter,api,proof);await focusEditorCases(page,adapter,api,proof,legacyProducts);await titleBoundsCases(page,adapter,api,proof,legacyProducts);await sourceDetailCases(page,adapter,api,sourceBank);await availabilityFailures(page,adapter);await selectorCases(page,adapter,api,sourceBank,proof);await generationCases(page,adapter,api,base);await metadataCases(page,adapter,api,legacyProducts);if(candidateShelf)await candidateShelfCases(page,api,proof);await pendingMutationCases(page,adapter,api,base,legacyProducts);if(candidateShelf)await candidateShelfFences(page,api,base);await sourceFenceCases(page,adapter,base);}
+    const shelfOnly=legacyProducts.filter(id=>id!=='conversation-bookmarks');
+    if(fixture.enabled.includes('conversation-bookmarks'))await collectionCases(page,adapter,api,proof,sourceBank);
+    if(scenario==='both'){
+     await inspectorCases(page,adapter,api,sourceBank);await editorCases(page,adapter,api,proof);
+     if(adapter==='desktop')await desktopCases(page,api);
+     if(shelfOnly.length){await focusEditorCases(page,adapter,api,proof,shelfOnly);await titleBoundsCases(page,adapter,api,proof,shelfOnly);}
+     await availabilityFailures(page,adapter);
+     await generationCases(page,adapter,api,base);
+     if(shelfOnly.length)await metadataCases(page,adapter,api,shelfOnly);
+     if(candidateShelf)await candidateShelfCases(page,api,proof);
+     await fenceCases(page,adapter,api,base);
+     if(shelfOnly.length)await pendingMutationCases(page,adapter,api,base,shelfOnly);
+     if(candidateShelf)await candidateShelfFences(page,api,base);
+    }
     if(fixture.enabled.length===2){
      await page.getByRole('tab',{name:'Bookmarks',exact:true}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toBeFocused();await expect(page.getByRole('tab',{name:'Deliverables',exact:true})).toHaveAttribute('aria-selected','true');
      if(adapter==='desktop'){
@@ -336,13 +232,13 @@ try{
     }
     expect(errors).toEqual([]);
     rows.push({scenario,adapter,order,passed:true});console.log('PASS',scenario,adapter,order);
-   }catch(error){await page.screenshot({path:join(proof,'failure.png'),fullPage:true});await writeFile(join(proof,'failure-dom.json'),JSON.stringify(await page.evaluate(()=>({active:document.activeElement?.outerHTML,choices:[...document.querySelectorAll('[role=combobox]')].map(n=>({html:n.outerHTML,rect:n.getBoundingClientRect().toJSON(),ancestors:[...function*(x){while(x){yield x;x=x.parentElement;}}(n)].map(x=>({tag:x.tagName,hidden:x.getAttribute('aria-hidden'),cls:x.className,style:x.getAttribute('style'),display:getComputedStyle(x).display,visibility:getComputedStyle(x).visibility,contentVisibility:getComputedStyle(x).contentVisibility,rect:x.getBoundingClientRect().toJSON(),connected:x.isConnected}))}))})),null,2));console.error({scenario,adapter,order,errors,body:await page.locator('body').innerText(),logs});throw error;}
+   }catch(error){await page.screenshot({path:join(proof,'failure.png'),fullPage:true});await writeFile(join(proof,'failure-dom.json'),JSON.stringify(await page.evaluate(()=>({active:document.activeElement?.outerHTML,choices:[...document.querySelectorAll('[role=combobox]')].map(n=>({html:n.outerHTML,rect:n.getBoundingClientRect().toJSON(),ancestors:[...function*(x){while(x){yield x;x=x.parentElement;}}(n)].map(x=>({tag:x.tagName,hidden:x.getAttribute('aria-hidden'),cls:x.className,style:x.getAttribute('style'),display:getComputedStyle(x).display,visibility:getComputedStyle(x).visibility,contentVisibility:getComputedStyle(x).contentVisibility,rect:x.getBoundingClientRect().toJSON(),connected:x.isConnected}))}))})),null,2));console.error({scenario,adapter,order,errors,body:(await page.locator('body').innerText()).slice(0,3000),logs:harness.logs.slice(-3000)});throw error;}
    finally{await context.close();}
   }
-  await stop();
+  await harness.stop();
  }
  if(!process.env.SAVED_SCENARIOS&&!process.env.SAVED_ADAPTERS)expect(rows).toHaveLength(34);
  for(const [file,hash] of Object.entries(pins))expect(createHash('sha256').update(await readFile(file)).digest('hex'),`Pinned source changed during verification: ${file}`).toBe(hash);
  await writeFile(join(proof,'results.json'),JSON.stringify({hostSource:source,hostCommit:execFileSync('git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),browser:browser.version(),completedAt:new Date().toISOString(),pins,cases:rows,scope:'Native loaders, Dashboard slots, Desktop registry and lifecycle; real authenticated backend. SDK host state/IPC boundaries are doubles; not full Electron or secondary-profile transport QA.'},null,2));
  console.log(`Saved matrix: ${rows.length} cases passed${process.env.SAVED_SCENARIOS||process.env.SAVED_ADAPTERS?' (filtered run)':' / 34 expected'}. Proof: ${proof}`);
-}finally{await browser?.close();await stop();await rm(scratch,{recursive:true,force:true});}
+}finally{await harness.close();}

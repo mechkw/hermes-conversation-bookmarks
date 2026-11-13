@@ -82,8 +82,8 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn('FUTURE', json.dumps(self.calls))
         self.assertNotIn('Visible request', (self.home/'plugin-data/conversation-bookmarks/bookmarks.sqlite3').read_bytes().decode('latin1'))
 
-    def test_reject_invalid_anchors_sources_profiles_schema_and_entire_conversation(self):
-        for changes in ({'message_id':None}, {'message_id':203}, {'message_id':9999}, {'message_id':True}, {'session_id':'foreign'}, {'session_id':'bad/id'}, {'profile':'elsewhere'}):
+    def test_reject_invalid_anchors_sources_profiles_and_schema(self):
+        for changes in ({'message_id':0}, {'message_id':203}, {'message_id':9999}, {'message_id':True}, {'session_id':'foreign'}, {'session_id':'bad/id'}, {'profile':'elsewhere'}):
             self.assertGreaterEqual(self.generate(**changes).status_code, 400)
         self.assertEqual(self.client.post('/generation/draft?profile=foreign', json={'session_id':'fictional-a','message_id':204}).status_code, 409)
         for column, value in (('source','cron'), ('hidden',1), ('profile_name','foreign'), ('parent_session_id','foreign')):
@@ -99,6 +99,48 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
         # Manual entire-conversation save is independent of generation eligibility.
         self.assertEqual(self.client.post('/entries', json={'title':'Manual','session_id':'fictional-a'}).status_code, 201)
+
+    def test_whole_conversation_drafts_from_its_latest_usable_response(self):
+        self.client.put('/generation/settings', json={'previous_exchanges': 5})
+        response = self.generate(message_id=None)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['context'], {'previous_exchanges': 5, 'requested_exchanges': 5, 'truncated': False,
+                                                      'anchor_message_id': 204, 'scope': 'conversation'})
+        messages = json.loads(self.calls[-1]['input'][0]['text'])['messages']
+        # The unanswered trailing request (205) is not part of any exchange.
+        self.assertEqual([m['content'] for m in messages[-2:]], ['Fictional 203', 'Fictional 204'])
+        self.assertEqual(len(messages), 12)
+        self.assertIn('AS A WHOLE', self.calls[-1]['instructions'])
+        # Omitting the field means the same thing; a chosen response keeps its own wording.
+        self.assertEqual(self.client.post('/generation/draft', json={'session_id': 'fictional-a'}).status_code, 200)
+        self.assertEqual(self.generate().json()['context'], {'previous_exchanges': 5, 'requested_exchanges': 5, 'truncated': False})
+        self.assertIn('FINAL assistant response', self.calls[-1]['instructions'])
+        self.assertNotIn('AS A WHOLE', self.calls[-1]['instructions'])
+        # A newest response that is hidden or private is skipped, never sent.
+        with database(self.home/'state.db') as db:
+            db.execute("UPDATE messages SET display_kind='hidden' WHERE id=204")
+            db.execute("UPDATE messages SET content='<analysis>PRIVATE' WHERE id=202")
+        response = self.generate(message_id=None)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['context']['anchor_message_id'], 200)
+        self.assertNotIn('PRIVATE', json.dumps(self.calls))
+        self.assertEqual(json.loads(self.calls[-1]['input'][0]['text'])['messages'][-1]['content'], 'Fictional 200')
+
+    def test_whole_conversation_keeps_every_source_fence(self):
+        for column, value in (('source','cron'), ('hidden',1), ('profile_name','foreign')):
+            with database(self.home/'state.db') as db:
+                old = db.execute(f'SELECT {column} FROM sessions WHERE id=?', ('fictional-a',)).fetchone()[0]
+                db.execute(f'UPDATE sessions SET {column}=? WHERE id=?', (value,'fictional-a'))
+            self.assertEqual(self.generate(message_id=None).status_code, 404)
+            with database(self.home/'state.db') as db:
+                db.execute(f'UPDATE sessions SET {column}=? WHERE id=?', (old,'fictional-a'))
+        self.assertEqual(self.generate(message_id=None, session_id='foreign').status_code, 404)
+        with database(self.home/'state.db') as db:
+            db.execute("UPDATE messages SET role='user' WHERE session_id='fictional-a'")
+        response = self.generate(message_id=None)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('no assistant response', response.json()['detail'])
+        self.assertEqual(self.calls, [])
 
     def test_hidden_synthetic_and_private_rows_excluded_and_required_text_never_truncated(self):
         for field, value in (('display_kind','hidden'), ('observed',1), ('_compressed_summary',1), ('display_metadata','{"model_only":true}'), ('display_metadata','{"thought":true}'), ('display_metadata','{"channel":"analysis"}'), ('content','<analysis>private'), ('content','[ASYNC COMPLETE] private'), ('content','x'*65537)):

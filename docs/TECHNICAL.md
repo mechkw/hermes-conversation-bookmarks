@@ -11,13 +11,17 @@ Conversation Bookmarks persists deliberate annotations and exact source referenc
 | `__init__.py` | Four tools, singular/plural commands, current-session handoff, and generation registration. |
 | `telegram_bookmarks.py` | Optional native panels, owner policy, explicit reference-only Add confirmation, and callback lifetime. |
 | `dashboard/plugin_api.py` | Models, annotation store, read-only source adapter, generation collector, and authenticated routes. |
-| `ui/Bookmarks.jsx` | Collection, adjacent inspector, checkboxes, and confirmed removal. |
-| `ui/BookmarkEditor.jsx` | Conversation/response chooser, annotations, and generated draft. |
+| `ui/Bookmarks.jsx`, `ui/BookmarkRow.jsx` | Collection: filters, list, selection, keyboard, and confirmed removal. |
+| `ui/BookmarkInspector.jsx` | Adjacent details pane: annotations, on-request source context, references. |
+| `ui/BookmarkEditor.jsx`, `ui/SourcePicker.jsx`, `ui/TagInput.jsx` | Conversation/response picker, annotations, tag chips, and AI draft. |
+| `ui/QuickBookmarks.jsx` | Desktop quick finder (open, or mention in chat). |
 | `ui/BookmarkSettings.jsx` | Profile-local display switches. |
-| `ui/desktop.jsx`, `ui/dashboard.jsx` | Host-specific transport and navigation. |
+| `ui/presentation.desktop.jsx`, `ui/presentation.dashboard.jsx` | The only files that touch a host UI kit. Shared components import `@saved/presentation`. |
+| `ui/desktop.jsx`, `ui/dashboard.jsx` | Host-specific transport, navigation, and contributions. |
+| `ui/lib.js`, `ui/style.css` | Host-neutral helpers; token-only layout styles. |
 | `desktop/plugin.js`, `dashboard/dist/index.js` | Built client bundles. |
 
-The package works without Delivery Shelf. When both are enabled, their providers share Saved navigation. Bookmarks remains references and annotations; Shelf remains delivered files and preserved versions. Native Desktop contributes **Plus → Bookmarks** and **Browse bookmarks**, which open browsing rather than silently capturing a source.
+The package works without Delivery Shelf. When both are enabled, their providers share Saved navigation. Bookmarks remains references and annotations; Shelf remains delivered files and preserved versions. Native Desktop contributes a composer **+ → Bookmarks** entry and palette commands (**Find a bookmark**, **Browse bookmarks**, **Bookmark this conversation**), the last one sharing action `conversation-bookmarks.save` with a rebindable shortcut (default `mod+alt+b`). It also decorates sidebar session rows whose conversation has bookmarks. None of these saves anything without an explicit Save.
 
 ## Persistence and input
 
@@ -64,13 +68,17 @@ Toolset `conversation_bookmarks` contains `conversation_bookmark_save`, `convers
 
 Saved search covers titles, notes, and tags, not transcript content. Title/note matching uses SQLite `lower()` and literal substring matching. Tag substrings and exact tag filters use Unicode casefold. This is not a universal Unicode full-text search engine.
 
-Sorts are `newest`, `oldest`, and `title`. Newest/oldest use original creation time, not last edit. API pages default to 50 and allow 1–100; the UI displays 30. Offset is bounded to 1,000,000.
+`kind` narrows to conversation bookmarks (no message reference) or response bookmarks; `session_id` narrows to one exact conversation. Both compose with `q`, `tag`, and `sort`.
 
-Selecting a title opens an adjacent inspector. Checkboxes separately select explicit bookmarks for removal. Page selection affects that page, and selected records can span pages up to the 100-item UI cap. Changing filters or refreshing clears the selection. There is no all-filtered selection. Bulk removal accepts 1–100 unique ID/revision pairs, reserves one SQLite transaction, validates every pair, and removes all or none.
+Sorts are `newest`, `oldest`, and `title`. Newest/oldest use original creation time, not last edit. API pages default to 50 and allow 1–100; the UI loads 30 at a time and appends on **Show more**. Offset is bounded to 1,000,000.
+
+`GET /tags` returns tag usage, casefold-merged with the first-saved spelling, ordered by count then name. `GET /marks` returns, for at most 500 most recently bookmarked conversations, the session identifier and its bookmark count; it carries no titles or annotations and feeds the sidebar mark.
+
+Selecting a bookmark opens the adjacent details pane. Checkboxes separately select explicit bookmarks for removal. The header checkbox affects loaded rows only, up to the 100-item UI cap. Changing filters or refreshing clears the selection. There is no all-filtered selection. Bulk removal accepts 1–100 unique ID/revision pairs, reserves one SQLite transaction, validates every pair, and removes all or none.
 
 Bookmarks has no Archive, Trash, version history, or recovery timer. Confirmed removal is permanent annotation deletion, not source deletion.
 
-Native Desktop rechecks availability and calls `host.openSession` for the session/profile. An optional response reference does not promise exact-message scrolling. Dashboard supplies session/resume information rather than inventing a route.
+Native Desktop rechecks availability and calls `host.openSession` for the session/profile. An optional response reference does not promise exact-message scrolling. Dashboard supplies session/resume information rather than inventing a route. The Desktop quick finder can insert a plain-text mention through `host.composer.insertText`; it writes into the draft and never submits.
 
 ## Read-only source boundary
 
@@ -80,11 +88,15 @@ Ordinary saves and availability checks consult source identifiers and ownership.
 
 Stored preview cells are bounded to 16 KiB before decoding. Returned previews are at most 350 characters. Supported visible text is projected from native content. Reasoning, tool, media, hidden, observed, and unsupported carriers are not previews. `has_more` describes matches inside the current window; `window.truncated` describes older candidates outside it. Pages can shift as native history changes.
 
+`GET /entries/{id}/context` serves the details pane. Under the same connection fences and visibility rules as the chooser, it returns the conversation's label, source, and last activity, plus, for a response reference, one excerpt of at most 1,200 characters when the message is an eligible visible assistant response. Hidden, foreign, non-assistant, observed, compressed-summary, missing, or unsupported-schema sources yield `null` fields rather than an error. Nothing it reads is written to the bookmark store.
+
 Source states are `available`, `session_missing`, `message_missing`, `store_missing`, and `unavailable`. None promises source retention. A source may disappear immediately after validation, and annotations cannot reconstruct it.
+
+`GET /sources/sessions` orders conversations from people-facing sources before automated ones, applies `q` to title, ID and source before cutting the 1,000-item window, and adds an ephemeral `preview` (first visible user request, at most 120 characters) to untitled items on the returned page. Plain `def` routes and dependencies run on a four-worker pool owned by the plugin (`offloaded`), not on the host's shared pool.
 
 ## Manual AI draft
 
-Editor **Generate details** uses `POST /generation/draft` for a new response bookmark. It sends the selected response, its preceding real user request, and bounded earlier eligible exchanges through `ctx.llm.acomplete_structured` with task `conversation_bookmarks_details`. It excludes later text. It returns a draft, never a saved entry.
+Editor **Draft with AI** uses `POST /generation/draft` for a new bookmark. With `message_id` null or omitted it drafts for the whole conversation: the collector anchors on the newest visible assistant response that passes every fence (trying at most six) and reports it as `context.anchor_message_id` with `context.scope` set to `conversation` (a chosen response keeps the original context shape). With a `message_id` it sends the selected response, its preceding real user request, and bounded earlier eligible exchanges through `ctx.llm.acomplete_structured` with task `conversation_bookmarks_details`. It excludes later text. It returns a draft, never a saved entry.
 
 UI **Context** offers 5, 10, 20, or 50 previous exchanges, default 10. The compatibility API accepts strict integers 0–100. Generation reports actual/requested context and truncation. Required focal text is not silently shortened. The collector follows eligible compression continuity within its bounded native-history contract; it does not invent missing ancestry or initialize display indices.
 
@@ -99,9 +111,12 @@ Mount prefix: `/api/plugins/conversation-bookmarks`. The host owns authenticatio
 | Method | Relative route | Contract |
 | --- | --- | --- |
 | GET | `/status` | Version and bound profile. |
-| GET | `/entries` | Metadata search with `q`, `tag`, `sort`, `limit`, and `offset`. |
+| GET | `/entries` | Metadata search with `q`, `tag`, `kind`, `session_id`, `sort`, `limit`, and `offset`. |
+| GET | `/tags` | Tag usage counts, `limit` 1–200 (default 50). |
+| GET | `/marks` | Bookmark counts per conversation identifier, at most 500. |
 | POST | `/entries` | Validate source and create annotations. |
 | GET / PUT | `/entries/{id}` | Read, or replace complete metadata using current revision. |
+| GET | `/entries/{id}/context` | On-request source label and bounded response excerpt; never stored. |
 | DELETE | `/entries/{id}?revision=N` | Remove one annotation record only. |
 | POST | `/entries/remove` | All-or-nothing removal of explicit ID/revision pairs, maximum 100. |
 | GET / PUT | `/settings` | Strict booleans `show_notes` and `show_source_status`, default true. |
@@ -130,4 +145,4 @@ export HERMES_SOURCE=/path/to/hermes-agent
 bash scripts/verify.sh
 ```
 
-The source runner includes unit, native fixture, command, Telegram capture, build, and browser checks. Fixture tests do not establish live messaging, Electron history hydration, remote transport, or clean installation. Source inspection is not a test receipt. A new bundle, installed package, and native workflow each need separate evidence against the exact release. No current pass count or universal backend/client support is asserted here.
+The source runner includes unit, native fixture, command, Telegram capture, build, the static UI contract, the host's desktop-surface lint, and browser checks. Fixture tests do not establish live messaging, Electron history hydration, remote transport, or clean installation. Source inspection is not a test receipt. A new bundle, installed package, and native workflow each need separate evidence against the exact release. No current pass count or universal backend/client support is asserted here.

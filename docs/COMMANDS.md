@@ -74,12 +74,12 @@ Use the editor or tools for tags with literal commas, an explicit empty tag list
 
 If title, tags, or description is omitted, the command requests one current-session agent handoff. The agent is instructed to fill only the missing fields, preserve supplied values, save, and verify the returned bookmark through search.
 
-This is different from **Generate details** in the Add form:
+This is different from **Draft with AI** in the editor:
 
 | Workflow | Context | Persistence |
 | --- | --- | --- |
 | Assisted `/bookmark` | Context already available to the current agent. | Explicit request to complete and save. |
-| Editor **Generate details** | Selected response and bounded earlier exchanges. | Editable draft only. Save remains separate. |
+| Editor **Draft with AI** | Selected response (or a whole conversation's latest response) and bounded earlier exchanges. | Editable draft only. Save remains separate. |
 
 Gateway-assisted saves require explicit per-plugin permission on a host that supports the handoff:
 
